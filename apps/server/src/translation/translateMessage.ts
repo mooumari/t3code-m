@@ -46,6 +46,7 @@ export const makeTranslateMessage = Effect.gen(function* () {
       text: input.text,
       context: input.context,
       targetLanguage: input.targetLanguage,
+      instructions: input.instructions,
       modelSelection: settings.textGenerationModelSelection,
     });
   });
