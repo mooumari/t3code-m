@@ -175,6 +175,7 @@ import * as GitHubCli from "./sourceControl/GitHubCli.ts";
 import * as VcsProcess from "./vcs/VcsProcess.ts";
 import * as GitWorkflowService from "./git/GitWorkflowService.ts";
 import * as ReviewService from "./review/ReviewService.ts";
+import * as GitDashboardService from "./gitDashboard/GitDashboardService.ts";
 import * as SourceControlRepositoryService from "./sourceControl/SourceControlRepositoryService.ts";
 import * as ServerSecretStore from "./auth/ServerSecretStore.ts";
 import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
@@ -929,7 +930,9 @@ const buildAppUnderTest = (options?: {
       Layer.provide(gitManagerLayer),
       Layer.provide(gitVcsDriverLayer),
       Layer.provide(gitWorkflowLayer),
-      Layer.provide(reviewLayer),
+      Layer.provide(
+        Layer.merge(reviewLayer, GitDashboardService.layer.pipe(Layer.provide(gitVcsDriverLayer))),
+      ),
       Layer.provide(vcsProvisioningLayer),
       Layer.provide(
         Layer.mock(SourceControlRepositoryService.SourceControlRepositoryService)({

@@ -139,6 +139,7 @@ import * as VcsProvisioningService from "./vcs/VcsProvisioningService.ts";
 import * as GitWorkflowService from "./git/GitWorkflowService.ts";
 import { linkCreatedPullRequest } from "./git/linkCreatedPullRequest.ts";
 import * as ReviewService from "./review/ReviewService.ts";
+import * as GitDashboardService from "./gitDashboard/GitDashboardService.ts";
 import * as ProjectSetupScriptRunner from "./project/ProjectSetupScriptRunner.ts";
 import * as ProjectCloneTracker from "./project/ProjectCloneTracker.ts";
 import * as RepositoryIdentityResolver from "./project/RepositoryIdentityResolver.ts";
@@ -554,6 +555,7 @@ const makeWsRpcLayer = (
       const remoteOpenTargets = yield* RemoteOpenTargets.RemoteOpenTargets;
       const gitWorkflow = yield* GitWorkflowService.GitWorkflowService;
       const review = yield* ReviewService.ReviewService;
+      const gitDashboard = yield* GitDashboardService.GitDashboardService;
       const vcsProvisioning = yield* VcsProvisioningService.VcsProvisioningService;
       const vcsStatusBroadcaster = yield* VcsStatusBroadcaster.VcsStatusBroadcaster;
       const terminalManager = yield* TerminalManager.TerminalManager;
@@ -3406,6 +3408,14 @@ const makeWsRpcLayer = (
             review.getDiffFileContents(input),
             { "rpc.aggregate": "review" },
           ),
+        [WS_METHODS.gitDashboardGetOverview]: (input) =>
+          observeRpcEffect(WS_METHODS.gitDashboardGetOverview, gitDashboard.getOverview(input), {
+            "rpc.aggregate": "gitDashboard",
+          }),
+        [WS_METHODS.gitDashboardGetFileDiff]: (input) =>
+          observeRpcEffect(WS_METHODS.gitDashboardGetFileDiff, gitDashboard.getFileDiff(input), {
+            "rpc.aggregate": "gitDashboard",
+          }),
         [WS_METHODS.terminalOpen]: (input) =>
           observeRpcEffect(WS_METHODS.terminalOpen, terminalManager.open(input), {
             "rpc.aggregate": "terminal",
