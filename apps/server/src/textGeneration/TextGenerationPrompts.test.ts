@@ -349,4 +349,19 @@ describe("buildTranslatePrompt", () => {
     const { prompt } = buildTranslatePrompt({ text: "Done.", targetLanguage: "French" });
     expect(prompt).not.toContain("For context only");
   });
+
+  it("switches from a faithful translation to the developer's style when given instructions", () => {
+    const faithful = buildTranslatePrompt({ text: "Done.", targetLanguage: "French" }).prompt;
+    expect(faithful).toContain("Do not add, drop, summarize");
+    expect(faithful).not.toContain("developer's instructions");
+
+    const styled = buildTranslatePrompt({
+      text: "Done.",
+      targetLanguage: "French",
+      instructions: "Explain it like I'm 5.",
+    }).prompt;
+    expect(styled).toContain("Rewrite the assistant message below in French");
+    expect(styled).toContain("Explain it like I'm 5.");
+    expect(styled).not.toContain("Do not add, drop, summarize");
+  });
 });

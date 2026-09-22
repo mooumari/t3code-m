@@ -81,6 +81,8 @@ export interface TranslateTextInput {
   /** The user message the text answers, used only to disambiguate terms. */
   context?: string | undefined;
   targetLanguage: string;
+  /** How to present the result, such as "explain it simply"; empty means a faithful translation. */
+  instructions?: string | undefined;
   /** What model and provider to use for generation. */
   modelSelection: ModelSelection;
 }
