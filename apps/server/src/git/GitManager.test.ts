@@ -309,6 +309,7 @@ function createTextGeneration(
       Effect.succeed({
         title: "Update workflow",
       }),
+    translateText: () => Effect.succeed({ translation: "" }),
     ...overrides,
   };
 
@@ -357,6 +358,7 @@ function createTextGeneration(
             }),
         ),
       ),
+    translateText: implementation.translateText,
   };
 }
 

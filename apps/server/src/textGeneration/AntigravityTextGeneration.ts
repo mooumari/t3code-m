@@ -26,6 +26,7 @@ import {
   buildCommitMessagePrompt,
   buildPrContentPrompt,
   buildThreadTitlePrompt,
+  buildTranslatePrompt,
 } from "./TextGenerationPrompts.ts";
 import {
   sanitizeCommitSubject,
@@ -405,10 +406,22 @@ export const makeAntigravityTextGeneration = Effect.fn("makeAntigravityTextGener
       };
     });
 
+  const translateText: TextGeneration.TextGeneration["Service"]["translateText"] = Effect.fn(
+    "AntigravityTextGeneration.translateText",
+  )(function* (input) {
+    const generated = yield* runAntigravityJson({
+      operation: "translateText",
+      ...buildTranslatePrompt(input),
+      modelSelection: input.modelSelection,
+    });
+    return { translation: generated.translation.trim() };
+  });
+
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
+    translateText,
   } satisfies TextGeneration.TextGeneration["Service"];
 });

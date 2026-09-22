@@ -5,6 +5,7 @@ import {
   buildCommitMessagePrompt,
   buildPrContentPrompt,
   buildThreadTitlePrompt,
+  buildTranslatePrompt,
 } from "./TextGenerationPrompts.ts";
 import {
   normalizeCliError,
@@ -328,5 +329,24 @@ describe("normalizeCliError", () => {
 
     expect(result.detail).toBe("Failed to generate a commit message");
     expect(result.message).not.toContain("secret-token");
+  });
+});
+
+describe("buildTranslatePrompt", () => {
+  it("targets the language and keeps the user message as context only", () => {
+    const { prompt } = buildTranslatePrompt({
+      text: "Run `vp test run` before you push.",
+      context: "How do I run the tests?",
+      targetLanguage: "Arabic",
+    });
+    expect(prompt).toContain("into Arabic");
+    expect(prompt).toContain("do not translate it");
+    expect(prompt).toContain("How do I run the tests?");
+    expect(prompt.endsWith("Run `vp test run` before you push.")).toBe(true);
+  });
+
+  it("omits the context section when there is no user message", () => {
+    const { prompt } = buildTranslatePrompt({ text: "Done.", targetLanguage: "French" });
+    expect(prompt).not.toContain("For context only");
   });
 });

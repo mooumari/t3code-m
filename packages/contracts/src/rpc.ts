@@ -91,6 +91,11 @@ import {
   GitDashboardOverviewInput,
   GitDashboardOverviewResult,
 } from "./gitDashboard.ts";
+import {
+  TranslateMessageError,
+  TranslateMessageInput,
+  TranslateMessageResult,
+} from "./translation.ts";
 import { KeybindingsConfigError } from "./keybindings.ts";
 import {
   ClientOrchestrationCommand,
@@ -336,6 +341,9 @@ export const WS_METHODS = {
   // Git dashboard methods (fork: read-only repository overview)
   gitDashboardGetOverview: "gitDashboard.getOverview",
   gitDashboardGetFileDiff: "gitDashboard.getFileDiff",
+
+  // Translation methods (fork: translate a message with the text generation model)
+  translationTranslateMessage: "translation.translateMessage",
 
   // Terminal methods
   terminalOpen: "terminal.open",
@@ -1122,6 +1130,12 @@ const WsGitDashboardGetFileDiffRpc = Rpc.make(WS_METHODS.gitDashboardGetFileDiff
   error: Schema.Union([GitDashboardError, EnvironmentAuthorizationError]),
 });
 
+const WsTranslationTranslateMessageRpc = Rpc.make(WS_METHODS.translationTranslateMessage, {
+  payload: TranslateMessageInput,
+  success: TranslateMessageResult,
+  error: Schema.Union([TranslateMessageError, EnvironmentAuthorizationError]),
+});
+
 const WsTerminalOpenRpc = Rpc.make(WS_METHODS.terminalOpen, {
   payload: TerminalOpenInput,
   success: TerminalSessionSnapshot,
@@ -1508,6 +1522,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsReviewGetDiffFileContentsRpc,
   WsGitDashboardGetOverviewRpc,
   WsGitDashboardGetFileDiffRpc,
+  WsTranslationTranslateMessageRpc,
   WsTerminalOpenRpc,
   WsTerminalAttachRpc,
   WsTerminalWriteRpc,

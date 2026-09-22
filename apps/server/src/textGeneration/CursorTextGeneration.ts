@@ -16,6 +16,7 @@ import {
   buildCommitMessagePrompt,
   buildPrContentPrompt,
   buildThreadTitlePrompt,
+  buildTranslatePrompt,
 } from "./TextGenerationPrompts.ts";
 import {
   sanitizeCommitSubject,
@@ -54,7 +55,8 @@ export const makeCursorTextGeneration = Effect.fn("makeCursorTextGeneration")(fu
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "generateThreadTitle";
+      | "generateThreadTitle"
+      | "translateText";
     cwd: string;
     prompt: string;
     outputSchemaJson: S;
@@ -261,10 +263,25 @@ export const makeCursorTextGeneration = Effect.fn("makeCursorTextGeneration")(fu
       } satisfies TextGeneration.ThreadTitleGenerationResult;
     });
 
+  const translateText: TextGeneration.TextGeneration["Service"]["translateText"] = Effect.fn(
+    "CursorTextGeneration.translateText",
+  )(function* (input) {
+    const { prompt, outputSchema } = buildTranslatePrompt(input);
+    const generated = yield* runCursorJson({
+      operation: "translateText",
+      cwd: input.cwd,
+      prompt,
+      outputSchemaJson: outputSchema,
+      modelSelection: input.modelSelection,
+    });
+    return { translation: generated.translation.trim() };
+  });
+
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
+    translateText,
   } satisfies TextGeneration.TextGeneration["Service"];
 });
