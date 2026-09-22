@@ -9,7 +9,12 @@ import * as ServerConfig from "../config.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as VcsProcess from "../vcs/VcsProcess.ts";
 import * as GitDashboardService from "./GitDashboardService.ts";
-import { parsePorcelainV2Status, parseWorktreeList } from "./gitDashboardParsing.ts";
+import {
+  isSafeRefName,
+  parseNameStatus,
+  parsePorcelainV2Status,
+  parseWorktreeList,
+} from "./gitDashboardParsing.ts";
 
 const TestLayer = GitDashboardService.layer.pipe(
   Layer.provideMerge(GitVcsDriver.layer),
@@ -86,7 +91,6 @@ describe("GitDashboardService", () => {
           ["feature/side", false],
         ],
       );
-      assert.strictEqual(overview.commits[0]?.subject, "initial commit");
       assert.strictEqual(overview.worktrees.length, 1);
       assert.isTrue(overview.worktrees[0]?.isCurrent);
 
@@ -106,6 +110,77 @@ describe("GitDashboardService", () => {
         area: "untracked",
       });
       assert.include(untrackedDiff.patch, "+export {};");
+    }).pipe(Effect.provide(TestLayer)),
+  );
+
+  it.effect("builds the graph with unpushed commits, and shows a commit and its file diffs", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const cwd = yield* makeRepo;
+      const remote = yield* fs.realPath(
+        yield* fs.makeTempDirectoryScoped({ prefix: "t3-git-dash-remote-" }),
+      );
+      yield* git(remote, ["init", "--bare", "--initial-branch=main"]);
+      yield* git(cwd, ["remote", "add", "origin", remote]);
+      yield* git(cwd, ["push", "-u", "origin", "main"]);
+      yield* fs.writeFileString(path.join(cwd, "README.md"), "# second\n");
+      yield* git(cwd, ["commit", "-am", "second commit"]);
+      const initial = yield* git(cwd, ["rev-parse", "HEAD~1"]);
+      const second = yield* git(cwd, ["rev-parse", "HEAD"]);
+
+      const dashboard = yield* GitDashboardService.GitDashboardService;
+      const graph = yield* dashboard.getGraph({ cwd, scope: "auto" });
+      assert.deepStrictEqual(
+        graph.commits.map((commit) => [commit.subject, commit.parents]),
+        [
+          ["second commit", [initial]],
+          ["initial commit", []],
+        ],
+      );
+      assert.strictEqual(graph.upstream, "origin/main");
+      assert.deepStrictEqual(graph.outgoing, [second]);
+      assert.deepStrictEqual(graph.incoming, []);
+      assert.isFalse(graph.hasMore);
+
+      const limited = yield* dashboard.getGraph({ cwd, scope: "all", limit: 1 });
+      assert.strictEqual(limited.commits.length, 1);
+      assert.isTrue(limited.hasMore);
+
+      const details = yield* dashboard.getCommit({ cwd, sha: second });
+      assert.strictEqual(details.subject, "second commit");
+      assert.deepStrictEqual(
+        details.files.map((file) => [file.change, file.path]),
+        [["modified", "README.md"]],
+      );
+      const rootDetails = yield* dashboard.getCommit({ cwd, sha: initial });
+      assert.deepStrictEqual(
+        rootDetails.files.map((file) => file.path),
+        ["README.md", "old name.txt"],
+      );
+
+      const commitDiff = yield* dashboard.getFileDiff({
+        cwd,
+        path: "README.md",
+        previousPath: null,
+        area: "commit",
+        sha: second,
+      });
+      assert.include(commitDiff.patch, "-# test");
+      assert.include(commitDiff.patch, "+# second");
+      const rootDiff = yield* dashboard.getFileDiff({
+        cwd,
+        path: "README.md",
+        previousPath: null,
+        area: "commit",
+        sha: initial,
+      });
+      assert.include(rootDiff.patch, "+# test");
+
+      const rejected = yield* dashboard
+        .getGraph({ cwd, scope: "refs", refs: ["--output=/tmp/x"] })
+        .pipe(Effect.flip);
+      assert.match(rejected.detail, /cannot start with/);
     }).pipe(Effect.provide(TestLayer)),
   );
 
@@ -197,5 +272,28 @@ describe("gitDashboardParsing", () => {
         ["/repo-wt", null, false, true, true, true],
       ],
     );
+  });
+
+  it("reads renames from name-status output", () => {
+    const parsed = parseNameStatus(
+      ["M", "a.ts", "R100", "old.ts", "new.ts", "D", "gone.ts", ""].join("\0"),
+      10,
+    );
+    assert.deepStrictEqual(
+      parsed.files.map((file) => [file.change, file.path, file.previousPath]),
+      [
+        ["modified", "a.ts", null],
+        ["renamed", "new.ts", "old.ts"],
+        ["deleted", "gone.ts", null],
+      ],
+    );
+  });
+
+  it("only accepts branch names git cannot read as options or ranges", () => {
+    assert.isTrue(isSafeRefName("feat/cutout-outline"));
+    assert.isTrue(isSafeRefName("origin/main"));
+    assert.isFalse(isSafeRefName("--all"));
+    assert.isFalse(isSafeRefName("main..feature"));
+    assert.isFalse(isSafeRefName("main feature"));
   });
 });

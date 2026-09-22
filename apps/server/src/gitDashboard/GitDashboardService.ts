@@ -5,8 +5,12 @@ import * as Path from "effect/Path";
 
 import {
   GitCommandError,
+  type GitDashboardCommitDetails,
+  type GitDashboardCommitInput,
   type GitDashboardFileDiffInput,
   type GitDashboardFileDiffResult,
+  type GitDashboardGraphInput,
+  type GitDashboardGraphResult,
   type GitDashboardOverviewInput,
   type GitDashboardOverviewResult,
 } from "@t3tools/contracts";
@@ -14,19 +18,29 @@ import {
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import {
   BRANCH_FORMAT,
+  COMMIT_DETAILS_FORMAT,
   COMMIT_FORMAT,
+  REMOTE_BRANCH_FORMAT,
   STASH_FORMAT,
+  isSafeRefName,
   isSafeRepositoryRelativePath,
   parseBranchList,
+  parseCommitDetails,
   parseCommitLog,
+  parseNameStatus,
   parsePorcelainV2Status,
+  parseRemoteBranchList,
   parseStashList,
   parseWorktreeList,
 } from "./gitDashboardParsing.ts";
 
-const DEFAULT_COMMIT_LIMIT = 30;
-const MAX_COMMIT_LIMIT = 200;
+const DEFAULT_COMMIT_LIMIT = 100;
+const MAX_COMMIT_LIMIT = 2_000;
 const MAX_STATUS_FILES = 1_000;
+const MAX_COMMIT_FILES = 2_000;
+const MAX_REMOTE_BRANCHES = 1_000;
+/** Outgoing and incoming commits past this count are not marked individually. */
+const MAX_AHEAD_BEHIND_MARKS = 500;
 const MAX_DIFF_BYTES = 2_000_000;
 // Stable English output for parsing, and never take optional locks that could race an agent's git work.
 const READ_ONLY_ENV = { LC_ALL: "C", GIT_OPTIONAL_LOCKS: "0" };
@@ -40,6 +54,12 @@ export class GitDashboardService extends Context.Service<
     readonly getFileDiff: (
       input: GitDashboardFileDiffInput,
     ) => Effect.Effect<GitDashboardFileDiffResult, GitCommandError>;
+    readonly getGraph: (
+      input: GitDashboardGraphInput,
+    ) => Effect.Effect<GitDashboardGraphResult, GitCommandError>;
+    readonly getCommit: (
+      input: GitDashboardCommitInput,
+    ) => Effect.Effect<GitDashboardCommitDetails, GitCommandError>;
   }
 >()("t3/gitDashboard/GitDashboardService") {}
 
@@ -54,7 +74,7 @@ const EMPTY_OVERVIEW: GitDashboardOverviewResult = {
   filesTruncated: false,
   worktrees: [],
   branches: [],
-  commits: [],
+  remoteBranches: [],
   stashes: [],
 };
 
@@ -87,8 +107,7 @@ export const make = Effect.gen(function* () {
       return EMPTY_OVERVIEW;
     }
 
-    const commitLimit = Math.min(input.commitLimit ?? DEFAULT_COMMIT_LIMIT, MAX_COMMIT_LIMIT);
-    const [status, worktrees, branches, log, stashes] = yield* Effect.all(
+    const [status, worktrees, branches, remoteBranches, stashes] = yield* Effect.all(
       [
         run("status", repoRoot, [
           "status",
@@ -99,8 +118,13 @@ export const make = Effect.gen(function* () {
         ]),
         run("worktrees", repoRoot, ["worktree", "list", "--porcelain", "-z"]),
         run("branches", repoRoot, ["for-each-ref", `--format=${BRANCH_FORMAT}`, "refs/heads"]),
-        // Fails on an unborn HEAD; treated as "no commits yet" below.
-        run("log", repoRoot, ["log", `-n${commitLimit}`, `--format=${COMMIT_FORMAT}`]),
+        run("remoteBranches", repoRoot, [
+          "for-each-ref",
+          `--format=${REMOTE_BRANCH_FORMAT}`,
+          `--count=${MAX_REMOTE_BRANCHES}`,
+          "--sort=-committerdate",
+          "refs/remotes",
+        ]),
         run("stashes", repoRoot, ["stash", "list", `--format=${STASH_FORMAT}`]),
       ],
       { concurrency: "unbounded" },
@@ -133,9 +157,121 @@ export const make = Effect.gen(function* () {
       worktrees:
         worktrees.exitCode === 0 ? parseWorktreeList(worktrees.stdout, path.resolve(repoRoot)) : [],
       branches: branches.exitCode === 0 ? parseBranchList(branches.stdout) : [],
-      commits: log.exitCode === 0 ? parseCommitLog(log.stdout) : [],
+      remoteBranches:
+        remoteBranches.exitCode === 0 ? parseRemoteBranchList(remoteBranches.stdout) : [],
       stashes: stashes.exitCode === 0 ? parseStashList(stashes.stdout) : [],
     };
+  });
+
+  const commitError = (operation: string, cwd: string, detail: string, exitCode?: number) =>
+    new GitCommandError({
+      operation: `GitDashboardService.${operation}`,
+      command: "git",
+      cwd,
+      detail,
+      ...(exitCode === undefined ? {} : { exitCode }),
+    });
+
+  const readParents = (cwd: string, sha: string) =>
+    run("parents", cwd, ["rev-list", "--parents", "-n1", "--end-of-options", sha]).pipe(
+      Effect.flatMap((result) =>
+        result.exitCode === 0
+          ? Effect.succeed(result.stdout.trim().split(" ").slice(1))
+          : Effect.fail(commitError("parents", cwd, `Unknown commit ${sha}.`, result.exitCode)),
+      ),
+    );
+
+  const listShas = (cwd: string, range: string) =>
+    run("aheadBehind", cwd, ["rev-list", `--max-count=${MAX_AHEAD_BEHIND_MARKS}`, range]).pipe(
+      Effect.map((result) =>
+        result.exitCode === 0 ? result.stdout.split("\n").filter((sha) => sha.length > 0) : [],
+      ),
+    );
+
+  const getGraph: GitDashboardService["Service"]["getGraph"] = Effect.fn(
+    "GitDashboardService.getGraph",
+  )(function* (input) {
+    const refs = input.refs ?? [];
+    if (!refs.every(isSafeRefName)) {
+      return yield* commitError("graph", input.cwd, "Branch names cannot start with '-'.");
+    }
+    const upstreamResult = yield* run("upstream", input.cwd, [
+      "rev-parse",
+      "--abbrev-ref",
+      "--symbolic-full-name",
+      "@{upstream}",
+    ]);
+    const upstream =
+      upstreamResult.exitCode === 0 && upstreamResult.stdout.trim().length > 0
+        ? upstreamResult.stdout.trim()
+        : null;
+
+    const revisions =
+      input.scope === "all"
+        ? ["--branches", "--remotes", "--tags", "HEAD"]
+        : input.scope === "refs" && refs.length > 0
+          ? ["--end-of-options", ...refs]
+          : ["HEAD", ...(upstream ? [upstream] : [])];
+    const limit = Math.min(Math.max(input.limit ?? DEFAULT_COMMIT_LIMIT, 1), MAX_COMMIT_LIMIT);
+
+    const [log, outgoing, incoming] = yield* Effect.all(
+      [
+        // One extra commit tells whether there is more history to load.
+        run("graph", input.cwd, [
+          "log",
+          "--date-order",
+          `-n${limit + 1}`,
+          `--format=${COMMIT_FORMAT}`,
+          ...revisions,
+        ]),
+        upstream ? listShas(input.cwd, `${upstream}..HEAD`) : Effect.succeed([]),
+        upstream ? listShas(input.cwd, `HEAD..${upstream}`) : Effect.succeed([]),
+      ],
+      { concurrency: "unbounded" },
+    );
+    // An unborn HEAD has no history yet; anything else is a real failure.
+    if (log.exitCode !== 0 && input.scope === "refs") {
+      return yield* commitError("graph", input.cwd, "git log failed.", log.exitCode);
+    }
+    const commits = log.exitCode === 0 ? parseCommitLog(log.stdout) : [];
+    return {
+      commits: commits.slice(0, limit),
+      hasMore: commits.length > limit,
+      upstream,
+      outgoing,
+      incoming,
+    };
+  });
+
+  const getCommit: GitDashboardService["Service"]["getCommit"] = Effect.fn(
+    "GitDashboardService.getCommit",
+  )(function* (input) {
+    const show = yield* run("commit", input.cwd, [
+      "show",
+      "-s",
+      `--format=${COMMIT_DETAILS_FORMAT}`,
+      "--end-of-options",
+      input.sha,
+    ]);
+    const details = show.exitCode === 0 ? parseCommitDetails(show.stdout) : null;
+    if (!details) {
+      return yield* commitError("commit", input.cwd, `Unknown commit ${input.sha}.`, show.exitCode);
+    }
+    const firstParent = details.parents[0];
+    const files = yield* run("commitFiles", input.cwd, [
+      "diff-tree",
+      "-r",
+      "-M",
+      "--no-commit-id",
+      "--name-status",
+      "-z",
+      ...(firstParent ? [firstParent, details.sha] : ["--root", details.sha]),
+    ]);
+    if (files.exitCode !== 0) {
+      return yield* commitError("commitFiles", input.cwd, "git diff-tree failed.", files.exitCode);
+    }
+    const parsed = parseNameStatus(files.stdout, MAX_COMMIT_FILES);
+    return { ...details, files: parsed.files, filesTruncated: parsed.truncated };
   });
 
   const getFileDiff: GitDashboardService["Service"]["getFileDiff"] = Effect.fn(
@@ -152,13 +288,30 @@ export const make = Effect.gen(function* () {
     }
 
     const baseArgs = ["diff", "--no-color", "--no-ext-diff"];
-    const args =
-      input.area === "staged"
-        ? [...baseArgs, "--cached", "-M", "--", ...paths]
-        : input.area === "untracked"
-          ? // `--no-index` exits 1 whenever the files differ, which is always here.
-            [...baseArgs, "--no-index", "--", "/dev/null", input.path]
-          : [...baseArgs, "--", input.path];
+    let args: ReadonlyArray<string>;
+    if (input.area === "commit") {
+      if (!input.sha) {
+        return yield* new GitCommandError({
+          operation: "GitDashboardService.getFileDiff",
+          command: "git",
+          cwd: input.cwd,
+          detail: "A commit diff needs the commit id.",
+        });
+      }
+      // Against the first parent, the same base the commit's file list uses.
+      const parents = yield* readParents(input.cwd, input.sha);
+      args = parents[0]
+        ? [...baseArgs, "-M", parents[0], input.sha, "--", ...paths]
+        : ["show", "--no-color", "--no-ext-diff", "--format=", input.sha, "--", ...paths];
+    } else {
+      args =
+        input.area === "staged"
+          ? [...baseArgs, "--cached", "-M", "--", ...paths]
+          : input.area === "untracked"
+            ? // `--no-index` exits 1 whenever the files differ, which is always here.
+              [...baseArgs, "--no-index", "--", "/dev/null", input.path]
+            : [...baseArgs, "--", input.path];
+    }
 
     const result = yield* run("fileDiff", input.cwd, args, { maxOutputBytes: MAX_DIFF_BYTES });
     if (result.exitCode !== 0 && !(input.area === "untracked" && result.exitCode === 1)) {
@@ -174,7 +327,7 @@ export const make = Effect.gen(function* () {
     return { patch: result.stdout, truncated: result.stdoutTruncated };
   });
 
-  return GitDashboardService.of({ getOverview, getFileDiff });
+  return GitDashboardService.of({ getOverview, getFileDiff, getGraph, getCommit });
 });
 
 export const layer = Layer.effect(GitDashboardService, make);

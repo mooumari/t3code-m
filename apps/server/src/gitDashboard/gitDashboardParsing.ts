@@ -1,9 +1,11 @@
 import type {
   GitDashboardBranch,
   GitDashboardCommit,
+  GitDashboardCommitDetails,
   GitDashboardFile,
   GitDashboardFileChange,
   GitDashboardHead,
+  GitDashboardRemoteBranch,
   GitDashboardStash,
   GitDashboardWorktree,
 } from "@t3tools/contracts";
@@ -264,7 +266,31 @@ export function parseBranchList(stdout: string): GitDashboardBranch[] {
   );
 }
 
-export const COMMIT_FORMAT = ["%H", "%h", "%an", "%at", "%D", "%s"].join("%x1f").concat("%x1e");
+export const REMOTE_BRANCH_FORMAT = ["%(refname:short)", "%(committerdate:unix)", "%(symref)"]
+  .join("%1f")
+  .concat("%1e");
+
+/** Parses `git for-each-ref --format=<REMOTE_BRANCH_FORMAT> refs/remotes`, newest first. */
+export function parseRemoteBranchList(stdout: string): GitDashboardRemoteBranch[] {
+  const branches: GitDashboardRemoteBranch[] = [];
+  for (const record of stdout.split(RECORD_SEPARATOR)) {
+    const trimmed = record.replace(/^\n/, "");
+    if (trimmed.length === 0) continue;
+    const [name, committedAt, symref] = trimmed.split(FIELD_SEPARATOR);
+    // `origin/HEAD` is only a pointer to another remote branch.
+    if (!name || symref) continue;
+    const timestamp = Number(committedAt);
+    branches.push({
+      name,
+      committedAt: Number.isFinite(timestamp) && timestamp > 0 ? timestamp : null,
+    });
+  }
+  return branches.toSorted((left, right) => (right.committedAt ?? 0) - (left.committedAt ?? 0));
+}
+
+export const COMMIT_FORMAT = ["%H", "%h", "%P", "%an", "%at", "%D", "%s"]
+  .join("%x1f")
+  .concat("%x1e");
 
 /** Parses `git log --format=<COMMIT_FORMAT>`. */
 export function parseCommitLog(stdout: string): GitDashboardCommit[] {
@@ -272,11 +298,13 @@ export function parseCommitLog(stdout: string): GitDashboardCommit[] {
   for (const record of stdout.split(RECORD_SEPARATOR)) {
     const trimmed = record.replace(/^\n/, "");
     if (trimmed.length === 0) continue;
-    const [sha, shortSha, authorName, authoredAt, refs, subject] = trimmed.split(FIELD_SEPARATOR);
+    const [sha, shortSha, parents, authorName, authoredAt, refs, subject] =
+      trimmed.split(FIELD_SEPARATOR);
     if (!sha || !shortSha) continue;
     commits.push({
       sha,
       shortSha,
+      parents: parents ? parents.split(" ").filter((parent) => parent.length > 0) : [],
       authorName: authorName ?? "",
       authoredAt: Number(authoredAt) || 0,
       refs: refs ? refs.split(", ").filter((ref) => ref.length > 0) : [],
@@ -284,6 +312,71 @@ export function parseCommitLog(stdout: string): GitDashboardCommit[] {
     });
   }
   return commits;
+}
+
+export const COMMIT_DETAILS_FORMAT = [
+  "%H",
+  "%P",
+  "%an",
+  "%ae",
+  "%at",
+  "%cn",
+  "%ct",
+  "%s",
+  "%b",
+].join("%x1f");
+
+/** Parses `git show -s --format=<COMMIT_DETAILS_FORMAT>`; files come from a separate call. */
+export function parseCommitDetails(
+  stdout: string,
+): Omit<GitDashboardCommitDetails, "files" | "filesTruncated"> | null {
+  const [
+    sha,
+    parents,
+    authorName,
+    authorEmail,
+    authoredAt,
+    committerName,
+    committedAt,
+    subject,
+    body,
+  ] = stdout.split(FIELD_SEPARATOR);
+  if (!sha) return null;
+  return {
+    sha: sha.trim(),
+    parents: parents ? parents.split(" ").filter((parent) => parent.length > 0) : [],
+    authorName: authorName ?? "",
+    authorEmail: authorEmail ?? "",
+    authoredAt: Number(authoredAt) || 0,
+    committerName: committerName ?? "",
+    committedAt: Number(committedAt) || 0,
+    subject: subject ?? "",
+    body: (body ?? "").trim(),
+  };
+}
+
+/** Parses `git diff-tree -r -M --name-status -z`: a status token, then one or two paths. */
+export function parseNameStatus(
+  stdout: string,
+  maxFiles: number,
+): { files: GitDashboardFile[]; truncated: boolean } {
+  const tokens = stdout.split("\0");
+  const files: GitDashboardFile[] = [];
+  for (let index = 0; index < tokens.length; index += 1) {
+    const status = tokens[index]!;
+    if (status.length === 0) continue;
+    const code = status[0]!;
+    const hasTwoPaths = code === "R" || code === "C";
+    const first = tokens[index + 1];
+    const second = hasTwoPaths ? tokens[index + 2] : undefined;
+    index += hasTwoPaths ? 2 : 1;
+    const path = hasTwoPaths ? second : first;
+    if (!path) continue;
+    if (files.length >= maxFiles) return { files, truncated: true };
+    const change = code === "U" ? "conflicted" : changeFromStatusCode(code);
+    files.push({ path, previousPath: hasTwoPaths ? (first ?? null) : null, change });
+  }
+  return { files, truncated: false };
 }
 
 export const STASH_FORMAT = ["%gd", "%s"].join("%x1f").concat("%x1e");
@@ -298,6 +391,14 @@ export function parseStashList(stdout: string): GitDashboardStash[] {
     if (ref) stashes.push({ ref, subject: subject ?? "" });
   }
   return stashes;
+}
+
+/**
+ * Branch names come from the client and become `git log` arguments. Reject anything git
+ * could read as an option or a revision range; `--end-of-options` guards the rest.
+ */
+export function isSafeRefName(ref: string): boolean {
+  return /^[^-\s~^:?*[\\][^\s~^:?*[\\]*$/.test(ref) && !ref.includes("..");
 }
 
 /** Diff paths come from the client, so keep them repository-relative. */

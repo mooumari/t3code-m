@@ -22,5 +22,19 @@ export function createGitDashboardEnvironmentAtoms<R, E>(
       staleTimeMs: 2_000,
       idleTtlMs: 30_000,
     }),
+    // Refreshed by the dashboard when the working copy changes, not on a timer.
+    graph: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:git-dashboard:graph",
+      tag: WS_METHODS.gitDashboardGetGraph,
+      staleTimeMs: 2_000,
+      idleTtlMs: 30_000,
+    }),
+    // A commit never changes, so its details can stay cached for a long time.
+    commit: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:git-dashboard:commit",
+      tag: WS_METHODS.gitDashboardGetCommit,
+      staleTimeMs: 10 * 60_000,
+      idleTtlMs: 60_000,
+    }),
   };
 }
