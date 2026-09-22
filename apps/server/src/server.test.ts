@@ -117,6 +117,7 @@ import {
 } from "./ws.ts";
 import * as CheckpointDiffQuery from "./checkpointing/CheckpointDiffQuery.ts";
 import * as GitManager from "./git/GitManager.ts";
+import * as TextGeneration from "./textGeneration/TextGeneration.ts";
 import * as EnvironmentTheme from "./environmentTheme.ts";
 import * as UsageLimitSources from "./usage/UsageLimitSources.ts";
 import * as Keybindings from "./keybindings.ts";
@@ -931,7 +932,11 @@ const buildAppUnderTest = (options?: {
       Layer.provide(gitVcsDriverLayer),
       Layer.provide(gitWorkflowLayer),
       Layer.provide(
-        Layer.merge(reviewLayer, GitDashboardService.layer.pipe(Layer.provide(gitVcsDriverLayer))),
+        Layer.mergeAll(
+          reviewLayer,
+          GitDashboardService.layer.pipe(Layer.provide(gitVcsDriverLayer)),
+          Layer.mock(TextGeneration.TextGeneration)({}),
+        ),
       ),
       Layer.provide(vcsProvisioningLayer),
       Layer.provide(

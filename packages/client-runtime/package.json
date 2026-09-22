@@ -183,6 +183,10 @@
       "types": "./src/state/gitDashboard.ts",
       "default": "./src/state/gitDashboard.ts"
     },
+    "./state/translation": {
+      "types": "./src/state/translation.ts",
+      "default": "./src/state/translation.ts"
+    },
     "./state/review": {
       "types": "./src/state/review.ts",
       "default": "./src/state/review.ts"

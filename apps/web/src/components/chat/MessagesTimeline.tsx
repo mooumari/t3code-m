@@ -165,6 +165,7 @@ import {
   timelineContentOverflowsViewport,
 } from "./timelineScrollAnchoring";
 import { MessageCopyButton } from "./MessageCopyButton";
+import { MessageTranslateButton, MessageTranslationPanel } from "./MessageTranslation";
 import { PierreEntryIcon } from "./PierreEntryIcon";
 import { inferEntryKindFromPath } from "../../pierre-icons";
 import { AssistantSelectionToolbar } from "./AssistantSelectionToolbar";
@@ -2435,31 +2436,35 @@ function AssistantMessageMeta({
   const ctx = use(TimelineRowCtx);
 
   return (
-    <div
-      className={cn(
-        "flex items-center gap-2 text-xs tabular-nums transition-opacity duration-200",
-        alwaysVisible
-          ? "opacity-100"
-          : "opacity-0 pointer-coarse:opacity-100 focus-within:opacity-100 group-hover/assistant:opacity-100",
-        className,
-      )}
-    >
-      <AssistantCopyButton
-        message={message}
-        showCopyButton={showCopyButton}
-        streaming={copyStreaming}
-      />
-      {!message.streaming && (
-        <Tooltip>
-          <TooltipTrigger render={<p className="text-muted-foreground text-xs tabular-nums" />}>
-            {formatDayAwareTimestamp(message.updatedAt, ctx.timestampFormat)}
-          </TooltipTrigger>
-          <TooltipPopup>
-            {formatChatTimestampTooltip(message.updatedAt, ctx.timestampFormat)}
-          </TooltipPopup>
-        </Tooltip>
-      )}
-    </div>
+    <>
+      <div
+        className={cn(
+          "flex items-center gap-2 text-xs tabular-nums transition-opacity duration-200",
+          alwaysVisible
+            ? "opacity-100"
+            : "opacity-0 pointer-coarse:opacity-100 focus-within:opacity-100 group-hover/assistant:opacity-100",
+          className,
+        )}
+      >
+        <AssistantCopyButton
+          message={message}
+          showCopyButton={showCopyButton}
+          streaming={copyStreaming}
+        />
+        <MessageTranslateButton message={message} threadRef={ctx.threadRef} />
+        {!message.streaming && (
+          <Tooltip>
+            <TooltipTrigger render={<p className="text-muted-foreground text-xs tabular-nums" />}>
+              {formatDayAwareTimestamp(message.updatedAt, ctx.timestampFormat)}
+            </TooltipTrigger>
+            <TooltipPopup>
+              {formatChatTimestampTooltip(message.updatedAt, ctx.timestampFormat)}
+            </TooltipPopup>
+          </Tooltip>
+        )}
+      </div>
+      <MessageTranslationPanel message={message} threadRef={ctx.threadRef} cwd={ctx.markdownCwd} />
+    </>
   );
 }
 

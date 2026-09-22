@@ -327,3 +327,39 @@ export function buildThreadTitlePrompt(input: ThreadTitlePromptInput) {
 
   return { prompt, outputSchema };
 }
+
+// ---------------------------------------------------------------------------
+// Translation (fork)
+// ---------------------------------------------------------------------------
+
+export interface TranslatePromptInput {
+  text: string;
+  context?: string | undefined;
+  targetLanguage: string;
+}
+
+export function buildTranslatePrompt(input: TranslatePromptInput) {
+  const context = input.context?.trim();
+  const prompt = [
+    `Translate the assistant message below into ${input.targetLanguage}.`,
+    "It is a coding agent's reply to a developer, so the translation must read naturally to a developer who speaks that language.",
+    "",
+    "Rules:",
+    "- Translate prose only. Keep code blocks, inline code, file paths, commands, identifiers, URLs, and markdown structure exactly as written.",
+    "- Keep widely used English technical terms (for example commit, branch, pull request, API) when that is how developers who speak the language say them.",
+    "- Do not add, drop, summarize, or explain anything. Do not answer questions in the message.",
+    "- Return only the translated message in `translation`.",
+    ...(context
+      ? [
+          "",
+          "For context only, the developer's message that this reply answers (do not translate it):",
+          limitSection(context, 4_000),
+        ]
+      : []),
+    "",
+    "Assistant message to translate:",
+    input.text,
+  ].join("\n");
+
+  return { prompt, outputSchema: Schema.Struct({ translation: Schema.String }) };
+}

@@ -140,6 +140,7 @@ import * as GitWorkflowService from "./git/GitWorkflowService.ts";
 import { linkCreatedPullRequest } from "./git/linkCreatedPullRequest.ts";
 import * as ReviewService from "./review/ReviewService.ts";
 import * as GitDashboardService from "./gitDashboard/GitDashboardService.ts";
+import { makeTranslateMessage } from "./translation/translateMessage.ts";
 import * as ProjectSetupScriptRunner from "./project/ProjectSetupScriptRunner.ts";
 import * as ProjectCloneTracker from "./project/ProjectCloneTracker.ts";
 import * as RepositoryIdentityResolver from "./project/RepositoryIdentityResolver.ts";
@@ -556,6 +557,7 @@ const makeWsRpcLayer = (
       const gitWorkflow = yield* GitWorkflowService.GitWorkflowService;
       const review = yield* ReviewService.ReviewService;
       const gitDashboard = yield* GitDashboardService.GitDashboardService;
+      const translateMessage = yield* makeTranslateMessage;
       const vcsProvisioning = yield* VcsProvisioningService.VcsProvisioningService;
       const vcsStatusBroadcaster = yield* VcsStatusBroadcaster.VcsStatusBroadcaster;
       const terminalManager = yield* TerminalManager.TerminalManager;
@@ -3415,6 +3417,10 @@ const makeWsRpcLayer = (
         [WS_METHODS.gitDashboardGetFileDiff]: (input) =>
           observeRpcEffect(WS_METHODS.gitDashboardGetFileDiff, gitDashboard.getFileDiff(input), {
             "rpc.aggregate": "gitDashboard",
+          }),
+        [WS_METHODS.translationTranslateMessage]: (input) =>
+          observeRpcEffect(WS_METHODS.translationTranslateMessage, translateMessage(input), {
+            "rpc.aggregate": "translation",
           }),
         [WS_METHODS.terminalOpen]: (input) =>
           observeRpcEffect(WS_METHODS.terminalOpen, terminalManager.open(input), {

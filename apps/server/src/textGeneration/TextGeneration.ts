@@ -75,6 +75,20 @@ export interface ThreadTitleGenerationResult {
   needsRefinement?: boolean | undefined;
 }
 
+export interface TranslateTextInput {
+  cwd: string;
+  text: string;
+  /** The user message the text answers, used only to disambiguate terms. */
+  context?: string | undefined;
+  targetLanguage: string;
+  /** What model and provider to use for generation. */
+  modelSelection: ModelSelection;
+}
+
+export interface TranslateTextResult {
+  translation: string;
+}
+
 /**
  * TextGeneration - Service tag for commit and change request text generation.
  */
@@ -106,6 +120,11 @@ export class TextGeneration extends Context.Service<
     readonly generateThreadTitle: (
       input: ThreadTitleGenerationInput,
     ) => Effect.Effect<ThreadTitleGenerationResult, TextGenerationError>;
+
+    /** Translate chat text into another language, keeping its markdown intact. */
+    readonly translateText: (
+      input: TranslateTextInput,
+    ) => Effect.Effect<TranslateTextResult, TextGenerationError>;
   }
 >()("t3/textGeneration/TextGeneration") {}
 
@@ -113,7 +132,8 @@ type TextGenerationOp =
   | "generateCommitMessage"
   | "generatePrContent"
   | "generateBranchName"
-  | "generateThreadTitle";
+  | "generateThreadTitle"
+  | "translateText";
 
 const resolveInstance = (
   registry: ProviderInstanceRegistry.ProviderInstanceRegistry["Service"],
@@ -165,6 +185,10 @@ export const make = Effect.gen(function* () {
             return yield* textGeneration.generateThreadTitle({ ...input, linkedContext });
           }),
         ),
+      ),
+    translateText: (input) =>
+      resolveInstance(registry, "translateText", input.modelSelection.instanceId).pipe(
+        Effect.flatMap((textGeneration) => textGeneration.translateText(input)),
       ),
   });
 });

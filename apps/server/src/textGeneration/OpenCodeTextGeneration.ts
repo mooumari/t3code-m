@@ -19,6 +19,7 @@ import {
   buildCommitMessagePrompt,
   buildPrContentPrompt,
   buildThreadTitlePrompt,
+  buildTranslatePrompt,
 } from "./TextGenerationPrompts.ts";
 import * as TextGeneration from "./TextGeneration.ts";
 import {
@@ -34,6 +35,7 @@ const OpenCodeTextGenerationOperation = Schema.Literals([
   "generatePrContent",
   "generateBranchName",
   "generateThreadTitle",
+  "translateText",
 ]);
 
 type OpenCodeTextGenerationOperation = typeof OpenCodeTextGenerationOperation.Type;
@@ -453,10 +455,25 @@ export const makeOpenCodeTextGeneration = Effect.fn("makeOpenCodeTextGeneration"
       };
     });
 
+  const translateText: TextGeneration.TextGeneration["Service"]["translateText"] = Effect.fn(
+    "OpenCodeTextGeneration.translateText",
+  )(function* (input) {
+    const { prompt, outputSchema } = buildTranslatePrompt(input);
+    const generated = yield* runOpenCodeJson({
+      operation: "translateText",
+      cwd: input.cwd,
+      prompt,
+      outputSchemaJson: outputSchema,
+      modelSelection: input.modelSelection,
+    });
+    return { translation: generated.translation.trim() };
+  });
+
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
+    translateText,
   } satisfies TextGeneration.TextGeneration["Service"];
 });
