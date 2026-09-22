@@ -48,6 +48,7 @@ function GraphCell(props: {
   readonly row: GraphRow;
   readonly columns: number;
   readonly isHead: boolean;
+  readonly isMerge: boolean;
 }) {
   const { row } = props;
   const middle = ROW_HEIGHT / 2;
@@ -78,13 +79,26 @@ function GraphCell(props: {
         />
       ))}
       {props.isHead ? (
+        // The checked-out commit: a ring with a dot, so it stands out from merges.
+        <>
+          <circle
+            cx={laneX(row.lane)}
+            cy={middle}
+            r={5}
+            fill="var(--background)"
+            stroke={dotColor}
+            strokeWidth={1.5}
+          />
+          <circle cx={laneX(row.lane)} cy={middle} r={2} fill={dotColor} />
+        </>
+      ) : props.isMerge ? (
         <circle
           cx={laneX(row.lane)}
           cy={middle}
-          r={4.5}
+          r={3.5}
           fill="var(--background)"
           stroke={dotColor}
-          strokeWidth={2}
+          strokeWidth={1.5}
         />
       ) : (
         <circle cx={laneX(row.lane)} cy={middle} r={3.5} fill={dotColor} />
@@ -278,7 +292,12 @@ const CommitRow = memo(function CommitRow(props: {
         props.selected && "bg-accent hover:bg-accent",
       )}
     >
-      <GraphCell row={props.row} columns={props.columns} isHead={props.isHead} />
+      <GraphCell
+        row={props.row}
+        columns={props.columns}
+        isHead={props.isHead}
+        isMerge={commit.parents.length > 1}
+      />
       <span className={cn("min-w-0 truncate", props.isHead && "font-semibold")}>
         {commit.subject}
       </span>
