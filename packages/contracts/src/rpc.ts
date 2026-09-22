@@ -84,6 +84,13 @@ import {
   ReviewDiffPreviewInput,
   ReviewDiffPreviewResult,
 } from "./review.ts";
+import {
+  GitDashboardError,
+  GitDashboardFileDiffInput,
+  GitDashboardFileDiffResult,
+  GitDashboardOverviewInput,
+  GitDashboardOverviewResult,
+} from "./gitDashboard.ts";
 import { KeybindingsConfigError } from "./keybindings.ts";
 import {
   ClientOrchestrationCommand,
@@ -325,6 +332,10 @@ export const WS_METHODS = {
   // Review methods
   reviewGetDiffPreview: "review.getDiffPreview",
   reviewGetDiffFileContents: "review.getDiffFileContents",
+
+  // Git dashboard methods (fork: read-only repository overview)
+  gitDashboardGetOverview: "gitDashboard.getOverview",
+  gitDashboardGetFileDiff: "gitDashboard.getFileDiff",
 
   // Terminal methods
   terminalOpen: "terminal.open",
@@ -1099,6 +1110,18 @@ const WsReviewGetDiffFileContentsRpc = Rpc.make(WS_METHODS.reviewGetDiffFileCont
   error: Schema.Union([ReviewDiffPreviewError, EnvironmentAuthorizationError]),
 });
 
+const WsGitDashboardGetOverviewRpc = Rpc.make(WS_METHODS.gitDashboardGetOverview, {
+  payload: GitDashboardOverviewInput,
+  success: GitDashboardOverviewResult,
+  error: Schema.Union([GitDashboardError, EnvironmentAuthorizationError]),
+});
+
+const WsGitDashboardGetFileDiffRpc = Rpc.make(WS_METHODS.gitDashboardGetFileDiff, {
+  payload: GitDashboardFileDiffInput,
+  success: GitDashboardFileDiffResult,
+  error: Schema.Union([GitDashboardError, EnvironmentAuthorizationError]),
+});
+
 const WsTerminalOpenRpc = Rpc.make(WS_METHODS.terminalOpen, {
   payload: TerminalOpenInput,
   success: TerminalSessionSnapshot,
@@ -1483,6 +1506,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsVcsInitRpc,
   WsReviewGetDiffPreviewRpc,
   WsReviewGetDiffFileContentsRpc,
+  WsGitDashboardGetOverviewRpc,
+  WsGitDashboardGetFileDiffRpc,
   WsTerminalOpenRpc,
   WsTerminalAttachRpc,
   WsTerminalWriteRpc,
