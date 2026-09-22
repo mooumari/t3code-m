@@ -3,7 +3,7 @@ import { ArrowDownIcon, ArrowUpIcon, ChevronDownIcon, ChevronRightIcon } from "l
 import type { ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
-import { formatRelativeTimeLabel } from "~/timestampFormat";
+import { formatRelativeTime, formatRelativeTimeLabel } from "~/timestampFormat";
 
 const CHANGE_LETTER: Record<GitDashboardFileChange, string> = {
   modified: "M",
@@ -30,6 +30,10 @@ const CHANGE_TONE: Record<GitDashboardFileChange, string> = {
 export const relativeFromUnix = (seconds: number | null) =>
   seconds === null ? "" : formatRelativeTimeLabel(new Date(seconds * 1000).toISOString());
 
+/** "3h" rather than "3h ago", for columns where every row has a time. */
+export const shortRelativeFromUnix = (seconds: number) =>
+  formatRelativeTime(new Date(seconds * 1000).toISOString())?.value ?? "";
+
 export function AheadBehind(props: { readonly ahead: number; readonly behind: number }) {
   if (props.ahead === 0 && props.behind === 0) return null;
   return (
@@ -54,6 +58,8 @@ export function AheadBehind(props: { readonly ahead: number; readonly behind: nu
 export function PaneSection(props: {
   readonly title: string;
   readonly count?: number;
+  /** Quiet text after the title, such as "clean". */
+  readonly note?: string;
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
   readonly actions?: ReactNode;
@@ -74,6 +80,11 @@ export function PaneSection(props: {
           {props.count !== undefined ? (
             <span className="ml-1 rounded-full bg-muted px-1.5 font-normal tabular-nums normal-case tracking-normal">
               {props.count}
+            </span>
+          ) : null}
+          {props.note ? (
+            <span className="ml-1 font-normal text-muted-foreground/70 normal-case tracking-normal">
+              {props.note}
             </span>
           ) : null}
         </button>

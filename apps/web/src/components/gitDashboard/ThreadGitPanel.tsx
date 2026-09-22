@@ -1,7 +1,7 @@
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { useNavigate, useParams } from "@tanstack/react-router";
-import { Maximize2Icon } from "lucide-react";
+import { SquareArrowOutUpRightIcon } from "lucide-react";
 import { useCallback } from "react";
 
 import { useRightPanelStore } from "~/rightPanelStore";
@@ -59,7 +59,7 @@ export function ThreadGitPanel(props: { readonly threadRef: ScopedThreadRef }) {
             aria-label="Open the full Git page"
             onClick={() => openFullPage(checkout.cwd)}
           >
-            <Maximize2Icon aria-hidden />
+            <SquareArrowOutUpRightIcon aria-hidden />
           </Button>
         }
       />

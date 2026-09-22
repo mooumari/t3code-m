@@ -222,7 +222,9 @@ function RepositoryView(props: {
         )}
       >
         <div className="flex shrink-0 flex-wrap items-center gap-x-1 gap-y-1 border-border/70 border-b px-2 py-1.5">
-          <WorktreePicker worktrees={overview.worktrees} onSelect={props.onSelectWorktree} />
+          {overview.worktrees.length > 1 ? (
+            <WorktreePicker worktrees={overview.worktrees} onSelect={props.onSelectWorktree} />
+          ) : null}
           <span className="flex min-w-0 items-center gap-1.5 px-2 text-sm">
             <GitBranchIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
             <span className="truncate font-medium">
@@ -289,13 +291,11 @@ function RepositoryView(props: {
           <div className="min-h-0 flex-1 overflow-y-auto">
             <PaneSection
               title="Changes"
-              count={changeCount}
+              {...(changeCount > 0 ? { count: changeCount } : { note: "clean" })}
               open={open.changes}
               onOpenChange={(changes) => setOpen((previous) => ({ ...previous, changes }))}
             >
-              {groups.length === 0 ? (
-                <p className="px-6 pb-2 text-muted-foreground text-sm">Working tree clean.</p>
-              ) : (
+              {groups.length === 0 ? null : (
                 <div className="flex flex-col pb-2">
                   {groups.map((group) => (
                     <div key={group.area} className="flex flex-col">

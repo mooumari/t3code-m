@@ -20,7 +20,7 @@ import { useEnvironmentQuery } from "~/state/query";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
-import { FileRow, relativeFromUnix } from "./gitDashboardShared";
+import { FileRow, shortRelativeFromUnix } from "./gitDashboardShared";
 import { layoutGraph, type GraphRow } from "./gitGraphLayout";
 
 const LANE_WIDTH = 12;
@@ -166,31 +166,41 @@ function RefChips(props: {
   return (
     <span className="flex shrink-0 items-center gap-1">
       {shown.map((chip) => {
+        // A narrow panel only labels the checked-out branch; the branch picker lists the rest.
+        const narrowHidden = chip.kind !== "head";
         const worktreePath =
           chip.kind === "tag" ? undefined : props.worktreeBranches.get(chip.name);
         return (
-          <Badge
+          <span
             key={`${chip.kind}:${chip.name}`}
-            size="sm"
-            variant={
-              chip.kind === "head" ? "info" : chip.kind === "remote" ? "secondary" : "outline"
-            }
-            title={worktreePath ? `${chip.name} is checked out in ${worktreePath}` : chip.name}
+            className={cn(narrowHidden && "@max-3xl/git:hidden")}
           >
-            {chip.kind === "remote" ? <CloudIcon aria-hidden /> : null}
-            {chip.kind === "tag" ? <TagIcon aria-hidden /> : null}
-            {worktreePath ? <FolderGit2Icon aria-label="worktree" /> : null}
-            {chip.kind !== "remote" && chip.kind !== "tag" && props.agentBranches.has(chip.name) ? (
-              <BotIcon aria-label="a thread works here" className="text-sky-500" />
-            ) : null}
-            <span className="max-w-40 truncate">{chip.name}</span>
-          </Badge>
+            <Badge
+              size="sm"
+              variant={
+                chip.kind === "head" ? "info" : chip.kind === "remote" ? "secondary" : "outline"
+              }
+              title={worktreePath ? `${chip.name} is checked out in ${worktreePath}` : chip.name}
+            >
+              {chip.kind === "remote" ? <CloudIcon aria-hidden /> : null}
+              {chip.kind === "tag" ? <TagIcon aria-hidden /> : null}
+              {worktreePath ? <FolderGit2Icon aria-label="worktree" /> : null}
+              {chip.kind !== "remote" &&
+              chip.kind !== "tag" &&
+              props.agentBranches.has(chip.name) ? (
+                <BotIcon aria-label="a thread works here" className="text-sky-500" />
+              ) : null}
+              <span className="max-w-40 truncate">{chip.name}</span>
+            </Badge>
+          </span>
         );
       })}
       {hidden.length > 0 ? (
-        <Badge size="sm" variant="outline" title={hidden.map((chip) => chip.name).join(", ")}>
-          +{hidden.length}
-        </Badge>
+        <span className="@max-3xl/git:hidden">
+          <Badge size="sm" variant="outline" title={hidden.map((chip) => chip.name).join(", ")}>
+            +{hidden.length}
+          </Badge>
+        </span>
       ) : null}
     </span>
   );
@@ -334,8 +344,8 @@ const CommitRow = memo(function CommitRow(props: {
           agentBranches={props.agentBranches}
         />
       ) : null}
-      <span className="ml-auto shrink-0 pl-2 text-muted-foreground text-xs">
-        {relativeFromUnix(commit.authoredAt)}
+      <span className="ml-auto min-w-8 shrink-0 pl-2 text-right text-muted-foreground/70 text-xs tabular-nums">
+        {shortRelativeFromUnix(commit.authoredAt)}
       </span>
     </button>
   );
