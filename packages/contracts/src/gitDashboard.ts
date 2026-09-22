@@ -89,6 +89,8 @@ export const GitDashboardOverviewResult = Schema.Struct({
   worktrees: Schema.Array(GitDashboardWorktree),
   branches: Schema.Array(GitDashboardBranch),
   remoteBranches: Schema.Array(GitDashboardRemoteBranch),
+  /** The branch work usually merges into, such as `origin/main`; the review base by default. */
+  defaultBranch: Schema.NullOr(Schema.String),
   stashes: Schema.Array(GitDashboardStash),
 });
 export type GitDashboardOverviewResult = typeof GitDashboardOverviewResult.Type;
@@ -99,6 +101,7 @@ export const GitDashboardDiffArea = Schema.Literals([
   "untracked",
   "conflicted",
   "commit",
+  "comparison",
 ]);
 export type GitDashboardDiffArea = typeof GitDashboardDiffArea.Type;
 
@@ -111,8 +114,10 @@ export const GitDashboardFileDiffInput = Schema.Struct({
   path: TrimmedNonEmptyString,
   previousPath: Schema.NullOr(TrimmedNonEmptyString),
   area: GitDashboardDiffArea,
-  /** The commit whose change to show; required when `area` is `commit`. */
+  /** The commit whose change to show; required for `commit` and `comparison`. */
   sha: Schema.optionalKey(GitDashboardSha),
+  /** For `comparison`: the base commit; the diff runs from its merge base with `sha`. */
+  baseSha: Schema.optionalKey(GitDashboardSha),
 });
 export type GitDashboardFileDiffInput = typeof GitDashboardFileDiffInput.Type;
 
@@ -194,6 +199,38 @@ export const GitDashboardCommitDetails = Schema.Struct({
   filesTruncated: Schema.Boolean,
 });
 export type GitDashboardCommitDetails = typeof GitDashboardCommitDetails.Type;
+
+// ---------------------------------------------------------------------------
+// Branch review
+// ---------------------------------------------------------------------------
+
+const GitDashboardRefName = TrimmedNonEmptyString.check(Schema.isMaxLength(255));
+
+export const GitDashboardComparisonInput = Schema.Struct({
+  cwd: TrimmedNonEmptyString,
+  /** The branch work merges into, such as `origin/main`. */
+  base: GitDashboardRefName,
+  /** The branch under review. */
+  head: GitDashboardRefName,
+});
+export type GitDashboardComparisonInput = typeof GitDashboardComparisonInput.Type;
+
+/** What `head` adds on top of `base`, like a pull request's commits and files. */
+export const GitDashboardComparison = Schema.Struct({
+  base: Schema.String,
+  head: Schema.String,
+  baseSha: Schema.String,
+  headSha: Schema.String,
+  /** Commits on `head` that `base` lacks, newest first. */
+  commits: Schema.Array(GitDashboardCommit),
+  commitsTruncated: Schema.Boolean,
+  /** Commits on `base` that `head` lacks: how far the branch is behind. */
+  behindCount: NonNegativeInt,
+  /** Changes from the merge base to `head`. */
+  files: Schema.Array(GitDashboardFile),
+  filesTruncated: Schema.Boolean,
+});
+export type GitDashboardComparison = typeof GitDashboardComparison.Type;
 
 export const GitDashboardError = GitCommandError;
 export type GitDashboardError = typeof GitDashboardError.Type;

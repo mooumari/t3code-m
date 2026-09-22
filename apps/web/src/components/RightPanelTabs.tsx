@@ -15,6 +15,7 @@ import type {
 import { getTerminalLabel } from "@t3tools/shared/terminalLabels";
 import {
   Bot,
+  GitBranch, // fork: Git tab
   Smartphone,
   ChevronDown,
   ChevronLeft,
@@ -48,6 +49,7 @@ import { Button } from "~/components/ui/button";
 import { AndroidIcon, AppleIcon } from "~/components/Icons";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { Kbd } from "~/components/ui/kbd";
+import { useGitPanelLauncher } from "~/components/gitDashboard/ThreadGitPanel"; // fork: Git tab
 import {
   Menu,
   MenuItem,
@@ -160,6 +162,7 @@ const SURFACE_DISABLED_REASONS = {
   pullRequest: "This thread's branch has no pull request yet.",
   pullRequests: "No linked pull requests are available for this thread.",
   agents: "Agents are only available from a thread.",
+  git: "Git is only available from a project thread.", // fork: Git tab
   device: "Devices are only available from a thread.",
 } as const;
 
@@ -184,6 +187,7 @@ const SURFACE_UNAVAILABLE_HINTS = {
   pullRequest: "No pull request on this branch yet.",
   pullRequests: "No linked pull requests available.",
   agents: "Available from a thread.",
+  git: "Available from a project thread.", // fork: Git tab
   device: "Available from a thread.",
 } as const;
 
@@ -337,6 +341,7 @@ function RightPanelEmptyState(props: {
 }) {
   // -1 means no highlight: it only appears on hover or arrow use.
   const [highlight, setHighlight] = useState(-1);
+  const gitPanel = useGitPanelLauncher(); // fork: Git tab
 
   const actions = [
     {
@@ -401,6 +406,16 @@ function RightPanelEmptyState(props: {
       disabledReason: SURFACE_UNAVAILABLE_HINTS.agents,
       onClick: props.onAddAgents,
       badgeCount: props.liveAgentCount,
+    },
+    // fork: Git tab
+    {
+      label: "Git",
+      icon: GitBranch,
+      shortcut: "G",
+      available: gitPanel.available,
+      disabledReason: SURFACE_UNAVAILABLE_HINTS.git,
+      onClick: gitPanel.open,
+      badgeCount: 0,
     },
     {
       label: "Device",
@@ -629,6 +644,8 @@ function surfaceTitle(
       return "Pull requests";
     case "agents":
       return "Agents";
+    case "git": // fork: Git tab
+      return "Git";
     case "device":
       return surface.title ?? surface.target?.name ?? "Device";
     case "preview": {
@@ -714,6 +731,8 @@ function SurfaceIcon({
       return <PullRequestGlyph.link className="size-3 shrink-0" />;
     case "agents":
       return <Bot className="size-3 shrink-0" />;
+    case "git": // fork: Git tab
+      return <GitBranch className="size-3 shrink-0" />;
     case "device":
       return surface.target?.platform === "ios" ? (
         <AppleIcon className="size-3 shrink-0" />
@@ -829,6 +848,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
   const { resolvedTheme } = useTheme();
   const tabListRef = useRef<HTMLDivElement>(null);
   const [renamingDevice, setRenamingDevice] = useState<string | null>(null);
+  const gitPanel = useGitPanelLauncher(); // fork: Git tab
   const [addSurfaceMenuOpen, setAddSurfaceMenuOpen] = useState(false);
   const [tabScrollState, setTabScrollState] = useState({
     hasOverflow: false,
@@ -923,6 +943,15 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
       available: props.agentsAvailable,
       disabledReason: SURFACE_DISABLED_REASONS.agents,
       onClick: props.onAddAgents,
+    },
+    // fork: Git tab
+    {
+      label: "Git",
+      icon: GitBranch,
+      shortcut: "G",
+      available: gitPanel.available,
+      disabledReason: SURFACE_DISABLED_REASONS.git,
+      onClick: gitPanel.open,
     },
     {
       label: "Device",

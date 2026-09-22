@@ -3426,6 +3426,12 @@ const makeWsRpcLayer = (
           observeRpcEffect(WS_METHODS.gitDashboardGetCommit, gitDashboard.getCommit(input), {
             "rpc.aggregate": "gitDashboard",
           }),
+        [WS_METHODS.gitDashboardGetComparison]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.gitDashboardGetComparison,
+            gitDashboard.getComparison(input),
+            { "rpc.aggregate": "gitDashboard" },
+          ),
         [WS_METHODS.translationTranslateMessage]: (input) =>
           observeRpcEffect(WS_METHODS.translationTranslateMessage, translateMessage(input), {
             "rpc.aggregate": "translation",

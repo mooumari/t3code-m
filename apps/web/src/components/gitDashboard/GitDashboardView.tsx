@@ -5,13 +5,18 @@ import type {
   GitDashboardOverviewResult,
 } from "@t3tools/contracts";
 import { GitBranchIcon } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
+import { cn } from "~/lib/utils";
 import { gitDashboardEnvironment } from "~/state/gitDashboard";
 import { useEnvironmentQuery } from "~/state/query";
 import { vcsEnvironment } from "~/state/vcs";
+import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
+import { Button } from "../ui/button";
 import { MiddleTruncate } from "../ui/middle-truncate";
 import { Spinner } from "../ui/spinner";
+import { useWorktreeThreads, WorktreeList } from "./GitAgents";
+import { GitBranchReview, type BranchReview } from "./GitBranchReview";
 import { AheadBehind, FileRow, PaneSection } from "./gitDashboardShared";
 import { GitDetailsPane, type DetailSelection } from "./GitDetailsPane";
 import { GitGraph } from "./GitGraph";
@@ -20,7 +25,7 @@ import { GraphScopePicker, WorktreePicker, type GraphScope } from "./GitRefPicke
 const GRAPH_PAGE_SIZE = 100;
 
 const WORKING_TREE_GROUPS: ReadonlyArray<{
-  readonly area: Exclude<GitDashboardDiffArea, "commit">;
+  readonly area: Exclude<GitDashboardDiffArea, "commit" | "comparison">;
   readonly label: string;
 }> = [
   { area: "conflicted", label: "Merge conflicts" },
@@ -43,6 +48,8 @@ export function GitDashboardView(props: {
   readonly environmentId: EnvironmentId;
   readonly cwd: string;
   readonly onSelectWorktree: (path: string) => void;
+  /** Extra toolbar buttons, such as opening the full page from a thread's panel. */
+  readonly actions?: ReactNode;
 }) {
   const { environmentId, cwd } = props;
   const overviewQuery = useEnvironmentQuery(
@@ -80,6 +87,7 @@ export function GitDashboardView(props: {
       repoRoot={overview.repoRoot ?? cwd}
       overview={overview}
       onSelectWorktree={props.onSelectWorktree}
+      actions={props.actions}
     />
   );
 }
@@ -89,6 +97,7 @@ function RepositoryView(props: {
   readonly repoRoot: string;
   readonly overview: GitDashboardOverviewResult;
   readonly onSelectWorktree: (path: string) => void;
+  readonly actions?: ReactNode;
 }) {
   const { environmentId, repoRoot, overview } = props;
   const head = overview.head;
@@ -125,7 +134,27 @@ function RepositoryView(props: {
 
   const [selection, setSelection] = useState<DetailSelection | null>(null);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
-  const [open, setOpen] = useState({ changes: true, stashes: false, graph: true });
+  const [open, setOpen] = useState({
+    changes: true,
+    stashes: false,
+    worktrees: true,
+    graph: true,
+  });
+  const [review, setReview] = useState<BranchReview | null>(null);
+  const startReview = (branch: string) => {
+    setReview({ base: overview.defaultBranch ?? "HEAD", head: branch });
+    setSelection(null);
+  };
+
+  const worktreeThreads = useWorktreeThreads(environmentId, overview.worktrees);
+  const agentBranches = useMemo(
+    () => new Set(worktreeThreads.byBranch.keys()),
+    [worktreeThreads.byBranch],
+  );
+  const threadCount = [...worktreeThreads.byWorktree.values()].reduce(
+    (total, threads) => total + threads.length,
+    0,
+  );
 
   // A working-tree selection is dropped once its file leaves that group (committed, reverted…).
   const visibleSelection =
@@ -173,13 +202,25 @@ function RepositoryView(props: {
   const graphSelection =
     visibleSelection?.kind === "commit"
       ? { sha: visibleSelection.sha, path: null }
-      : visibleSelection?.kind === "commit-file"
-        ? { sha: visibleSelection.sha, path: visibleSelection.path }
+      : visibleSelection?.kind === "commit-file" || visibleSelection?.kind === "comparison-file"
+        ? {
+            sha:
+              visibleSelection.kind === "commit-file"
+                ? visibleSelection.sha
+                : visibleSelection.headSha,
+            path: visibleSelection.path,
+          }
         : null;
 
+  // Side by side when wide; when narrow (a thread's panel), the lists and the details take turns.
   return (
     <div className="flex min-h-0 flex-1 flex-col @3xl/git:flex-row">
-      <div className="flex min-h-0 flex-col border-border/70 border-b @max-3xl/git:max-h-[60%] @3xl/git:w-[clamp(24rem,42%,40rem)] @3xl/git:border-r @3xl/git:border-b-0">
+      <div
+        className={cn(
+          "flex min-h-0 flex-1 flex-col @3xl/git:w-[clamp(24rem,42%,40rem)] @3xl/git:flex-none @3xl/git:border-border/70 @3xl/git:border-r",
+          visibleSelection && "@max-3xl/git:hidden",
+        )}
+      >
         <div className="flex shrink-0 flex-wrap items-center gap-x-1 gap-y-1 border-border/70 border-b px-2 py-1.5">
           <WorktreePicker worktrees={overview.worktrees} onSelect={props.onSelectWorktree} />
           <span className="flex min-w-0 items-center gap-1.5 px-2 text-sm">
@@ -194,123 +235,197 @@ function RepositoryView(props: {
             )}
             <AheadBehind ahead={head?.aheadCount ?? 0} behind={head?.behindCount ?? 0} />
           </span>
-          <span className="ml-auto min-w-0 max-w-full px-2 font-mono text-muted-foreground text-xs">
-            <MiddleTruncate value={repoRoot} />
+          <span className="ml-auto flex min-w-0 max-w-full items-center gap-1">
+            <span className="min-w-0 px-2 font-mono text-muted-foreground text-xs @max-3xl/git:hidden">
+              <MiddleTruncate value={repoRoot} />
+            </span>
+            {head?.branch && !review ? (
+              <Button
+                type="button"
+                size="xs"
+                variant="ghost"
+                onClick={() => startReview(head.branch ?? "HEAD")}
+              >
+                <PullRequestGlyph.pullRequest aria-hidden />
+                Review
+              </Button>
+            ) : null}
+            {props.actions}
           </span>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          <PaneSection
-            title="Changes"
-            count={changeCount}
-            open={open.changes}
-            onOpenChange={(changes) => setOpen((previous) => ({ ...previous, changes }))}
-          >
-            {groups.length === 0 ? (
-              <p className="px-6 pb-2 text-muted-foreground text-sm">Working tree clean.</p>
-            ) : (
-              <div className="flex flex-col pb-2">
-                {groups.map((group) => (
-                  <div key={group.area} className="flex flex-col">
-                    {groups.length > 1 ? (
-                      <div className="px-6 pt-1 pb-0.5 text-muted-foreground text-xs">
-                        {group.label} · {overview[group.area].length}
-                      </div>
-                    ) : null}
-                    {overview[group.area].map((file) => (
-                      <FileRow
-                        key={file.path}
-                        file={file}
-                        selected={
-                          visibleSelection?.kind === "working-file" &&
-                          visibleSelection.area === group.area &&
-                          visibleSelection.path === file.path
-                        }
-                        onSelect={() =>
-                          setSelection({
-                            kind: "working-file",
-                            area: group.area,
-                            path: file.path,
-                            previousPath: file.previousPath,
-                          })
-                        }
-                      />
-                    ))}
-                  </div>
-                ))}
-                {overview.filesTruncated ? (
-                  <p className="px-6 pt-1 text-warning-foreground text-xs">
-                    Too many changed files to list them all.
-                  </p>
-                ) : null}
-              </div>
-            )}
-          </PaneSection>
-          {overview.stashes.length > 0 ? (
-            <PaneSection
-              title="Stashes"
-              count={overview.stashes.length}
-              open={open.stashes}
-              onOpenChange={(stashes) => setOpen((previous) => ({ ...previous, stashes }))}
-            >
-              <ul className="flex flex-col pb-2">
-                {overview.stashes.map((stash) => (
-                  <li key={stash.ref} className="flex h-6.5 items-center gap-2 px-6 text-sm">
-                    <span className="shrink-0 font-mono text-muted-foreground text-xs">
-                      {stash.ref}
-                    </span>
-                    <span className="min-w-0 truncate">{stash.subject}</span>
-                  </li>
-                ))}
-              </ul>
-            </PaneSection>
-          ) : null}
-          <PaneSection
-            title="Graph"
-            open={open.graph}
-            onOpenChange={(graphOpen) => setOpen((previous) => ({ ...previous, graph: graphOpen }))}
-            actions={
-              <GraphScopePicker
-                scope={scope}
-                onScopeChange={changeScope}
-                currentBranch={head?.branch ?? null}
-                upstream={head?.upstream ?? null}
-                branches={overview.branches}
-                remoteBranches={overview.remoteBranches}
-              />
+        {review ? (
+          <GitBranchReview
+            environmentId={environmentId}
+            cwd={repoRoot}
+            review={review}
+            onReviewChange={(next) => {
+              setReview(next);
+              setSelection(null);
+            }}
+            onClose={() => {
+              setReview(null);
+              setSelection(null);
+            }}
+            branches={overview.branches}
+            remoteBranches={overview.remoteBranches}
+            agentBranches={agentBranches}
+            historySignature={signature}
+            selectedSha={graphSelection?.sha ?? null}
+            selectedPath={graphSelection?.path ?? null}
+            onSelectCommit={showCommit}
+            onSelectFile={(comparison, file) =>
+              setSelection({
+                kind: "comparison-file",
+                base: comparison.base,
+                head: comparison.head,
+                baseSha: comparison.baseSha,
+                headSha: comparison.headSha,
+                path: file.path,
+                previousPath: file.previousPath,
+              })
             }
-          >
-            {graph ? (
-              <GitGraph
-                environmentId={environmentId}
-                cwd={repoRoot}
-                graph={graph}
-                headSha={head?.sha ?? null}
-                remoteNames={remoteNames}
-                worktreeBranches={worktreeBranches}
-                selection={graphSelection}
-                expanded={expanded}
-                onSelectCommit={onSelectCommit}
-                onSelectFile={onSelectCommitFile}
-                loadingMore={graphQuery.isPending && graphQuery.data === null}
-                onLoadMore={() => setLimit((previous) => previous + GRAPH_PAGE_SIZE)}
-              />
-            ) : graphQuery.error ? (
-              <p className="px-6 pb-2 text-destructive-foreground text-sm">{graphQuery.error}</p>
-            ) : (
-              <div className="flex items-center gap-2 px-6 pb-2 text-muted-foreground text-sm">
-                <Spinner className="size-3.5" /> Loading history…
-              </div>
-            )}
-          </PaneSection>
-        </div>
+          />
+        ) : (
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <PaneSection
+              title="Changes"
+              count={changeCount}
+              open={open.changes}
+              onOpenChange={(changes) => setOpen((previous) => ({ ...previous, changes }))}
+            >
+              {groups.length === 0 ? (
+                <p className="px-6 pb-2 text-muted-foreground text-sm">Working tree clean.</p>
+              ) : (
+                <div className="flex flex-col pb-2">
+                  {groups.map((group) => (
+                    <div key={group.area} className="flex flex-col">
+                      {groups.length > 1 ? (
+                        <div className="px-6 pt-1 pb-0.5 text-muted-foreground text-xs">
+                          {group.label} · {overview[group.area].length}
+                        </div>
+                      ) : null}
+                      {overview[group.area].map((file) => (
+                        <FileRow
+                          key={file.path}
+                          file={file}
+                          selected={
+                            visibleSelection?.kind === "working-file" &&
+                            visibleSelection.area === group.area &&
+                            visibleSelection.path === file.path
+                          }
+                          onSelect={() =>
+                            setSelection({
+                              kind: "working-file",
+                              area: group.area,
+                              path: file.path,
+                              previousPath: file.previousPath,
+                            })
+                          }
+                        />
+                      ))}
+                    </div>
+                  ))}
+                  {overview.filesTruncated ? (
+                    <p className="px-6 pt-1 text-warning-foreground text-xs">
+                      Too many changed files to list them all.
+                    </p>
+                  ) : null}
+                </div>
+              )}
+            </PaneSection>
+            {overview.stashes.length > 0 ? (
+              <PaneSection
+                title="Stashes"
+                count={overview.stashes.length}
+                open={open.stashes}
+                onOpenChange={(stashes) => setOpen((previous) => ({ ...previous, stashes }))}
+              >
+                <ul className="flex flex-col pb-2">
+                  {overview.stashes.map((stash) => (
+                    <li key={stash.ref} className="flex h-6.5 items-center gap-2 px-6 text-sm">
+                      <span className="shrink-0 font-mono text-muted-foreground text-xs">
+                        {stash.ref}
+                      </span>
+                      <span className="min-w-0 truncate">{stash.subject}</span>
+                    </li>
+                  ))}
+                </ul>
+              </PaneSection>
+            ) : null}
+            {overview.worktrees.length > 1 || threadCount > 0 ? (
+              <PaneSection
+                title="Worktrees & threads"
+                count={threadCount}
+                open={open.worktrees}
+                onOpenChange={(worktrees) => setOpen((previous) => ({ ...previous, worktrees }))}
+              >
+                <WorktreeList
+                  worktrees={overview.worktrees}
+                  threadsByWorktree={worktreeThreads.byWorktree}
+                  defaultBranch={overview.defaultBranch}
+                  onSelectWorktree={props.onSelectWorktree}
+                  onReview={startReview}
+                />
+              </PaneSection>
+            ) : null}
+            <PaneSection
+              title="Graph"
+              open={open.graph}
+              onOpenChange={(graphOpen) =>
+                setOpen((previous) => ({ ...previous, graph: graphOpen }))
+              }
+              actions={
+                <GraphScopePicker
+                  scope={scope}
+                  onScopeChange={changeScope}
+                  currentBranch={head?.branch ?? null}
+                  upstream={head?.upstream ?? null}
+                  branches={overview.branches}
+                  remoteBranches={overview.remoteBranches}
+                  agentBranches={agentBranches}
+                />
+              }
+            >
+              {graph ? (
+                <GitGraph
+                  environmentId={environmentId}
+                  cwd={repoRoot}
+                  graph={graph}
+                  headSha={head?.sha ?? null}
+                  remoteNames={remoteNames}
+                  worktreeBranches={worktreeBranches}
+                  agentBranches={agentBranches}
+                  selection={graphSelection}
+                  expanded={expanded}
+                  onSelectCommit={onSelectCommit}
+                  onSelectFile={onSelectCommitFile}
+                  loadingMore={graphQuery.isPending && graphQuery.data === null}
+                  onLoadMore={() => setLimit((previous) => previous + GRAPH_PAGE_SIZE)}
+                />
+              ) : graphQuery.error ? (
+                <p className="px-6 pb-2 text-destructive-foreground text-sm">{graphQuery.error}</p>
+              ) : (
+                <div className="flex items-center gap-2 px-6 pb-2 text-muted-foreground text-sm">
+                  <Spinner className="size-3.5" /> Loading history…
+                </div>
+              )}
+            </PaneSection>
+          </div>
+        )}
       </div>
-      <div className="min-h-0 min-w-0 flex-1 overflow-y-auto">
+      <div
+        className={cn(
+          "min-h-0 min-w-0 flex-1 overflow-y-auto",
+          !visibleSelection && "@max-3xl/git:hidden",
+        )}
+      >
         <GitDetailsPane
           environmentId={environmentId}
           cwd={repoRoot}
           selection={visibleSelection}
           onSelectCommit={showCommit}
           onSelectCommitFile={onSelectCommitFile}
+          onBack={() => setSelection(null)}
         />
       </div>
     </div>

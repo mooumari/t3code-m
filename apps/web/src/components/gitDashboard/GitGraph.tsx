@@ -4,7 +4,14 @@ import type {
   GitDashboardFile,
   GitDashboardGraphResult,
 } from "@t3tools/contracts";
-import { ArrowDownIcon, ArrowUpIcon, CloudIcon, FolderGit2Icon, TagIcon } from "lucide-react";
+import {
+  ArrowDownIcon,
+  ArrowUpIcon,
+  BotIcon,
+  CloudIcon,
+  FolderGit2Icon,
+  TagIcon,
+} from "lucide-react";
 import { memo, useMemo, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
@@ -152,6 +159,7 @@ const MAX_CHIPS = 3;
 function RefChips(props: {
   readonly chips: ReadonlyArray<RefChip>;
   readonly worktreeBranches: ReadonlyMap<string, string>;
+  readonly agentBranches: ReadonlySet<string>;
 }) {
   const shown = props.chips.slice(0, MAX_CHIPS);
   const hidden = props.chips.slice(MAX_CHIPS);
@@ -172,6 +180,9 @@ function RefChips(props: {
             {chip.kind === "remote" ? <CloudIcon aria-hidden /> : null}
             {chip.kind === "tag" ? <TagIcon aria-hidden /> : null}
             {worktreePath ? <FolderGit2Icon aria-label="worktree" /> : null}
+            {chip.kind !== "remote" && chip.kind !== "tag" && props.agentBranches.has(chip.name) ? (
+              <BotIcon aria-label="a thread works here" className="text-sky-500" />
+            ) : null}
             <span className="max-w-40 truncate">{chip.name}</span>
           </Badge>
         );
@@ -199,6 +210,8 @@ export function GitGraph(props: {
   readonly remoteNames: ReadonlySet<string>;
   /** Branch name → path, for branches checked out in another worktree. */
   readonly worktreeBranches: ReadonlyMap<string, string>;
+  /** Branches a thread is working on. */
+  readonly agentBranches: ReadonlySet<string>;
   readonly selection: GraphSelection | null;
   readonly expanded: ReadonlySet<string>;
   readonly onSelectCommit: (sha: string) => void;
@@ -233,6 +246,7 @@ export function GitGraph(props: {
             }
             remoteNames={props.remoteNames}
             worktreeBranches={props.worktreeBranches}
+            agentBranches={props.agentBranches}
             selected={props.selection?.sha === commit.sha && props.selection.path === null}
             expanded={props.expanded.has(commit.sha)}
             onSelect={props.onSelectCommit}
@@ -275,6 +289,7 @@ const CommitRow = memo(function CommitRow(props: {
   readonly direction: "outgoing" | "incoming" | null;
   readonly remoteNames: ReadonlySet<string>;
   readonly worktreeBranches: ReadonlyMap<string, string>;
+  readonly agentBranches: ReadonlySet<string>;
   readonly selected: boolean;
   readonly expanded: boolean;
   readonly onSelect: (sha: string) => void;
@@ -313,7 +328,11 @@ const CommitRow = memo(function CommitRow(props: {
         />
       ) : null}
       {chips.length > 0 ? (
-        <RefChips chips={chips} worktreeBranches={props.worktreeBranches} />
+        <RefChips
+          chips={chips}
+          worktreeBranches={props.worktreeBranches}
+          agentBranches={props.agentBranches}
+        />
       ) : null}
       <span className="ml-auto shrink-0 pl-2 text-muted-foreground text-xs">
         {relativeFromUnix(commit.authoredAt)}
