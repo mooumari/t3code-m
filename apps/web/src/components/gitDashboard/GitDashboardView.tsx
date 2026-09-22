@@ -50,6 +50,11 @@ export function GitDashboardView(props: {
   readonly onSelectWorktree: (path: string) => void;
   /** Extra toolbar buttons, such as opening the full page from a thread's panel. */
   readonly actions?: ReactNode;
+  /**
+   * A thread's panel: just changes and the graph, and commits expand in place (like VS Code's
+   * Source Control) instead of opening their details.
+   */
+  readonly compact?: boolean;
 }) {
   const { environmentId, cwd } = props;
   const overviewQuery = useEnvironmentQuery(
@@ -88,6 +93,7 @@ export function GitDashboardView(props: {
       overview={overview}
       onSelectWorktree={props.onSelectWorktree}
       actions={props.actions}
+      compact={props.compact ?? false}
     />
   );
 }
@@ -98,6 +104,7 @@ function RepositoryView(props: {
   readonly overview: GitDashboardOverviewResult;
   readonly onSelectWorktree: (path: string) => void;
   readonly actions?: ReactNode;
+  readonly compact: boolean;
 }) {
   const { environmentId, repoRoot, overview } = props;
   const head = overview.head;
@@ -163,15 +170,19 @@ function RepositoryView(props: {
       ? null
       : selection;
 
-  const onSelectCommit = useCallback((sha: string) => {
-    setSelection({ kind: "commit", sha });
-    setExpanded((previous) => {
-      const next = new Set(previous);
-      if (next.has(sha)) next.delete(sha);
-      else next.add(sha);
-      return next;
-    });
-  }, []);
+  const { compact } = props;
+  const onSelectCommit = useCallback(
+    (sha: string) => {
+      if (!compact) setSelection({ kind: "commit", sha });
+      setExpanded((previous) => {
+        const next = new Set(previous);
+        if (next.has(sha)) next.delete(sha);
+        else next.add(sha);
+        return next;
+      });
+    },
+    [compact],
+  );
   const showCommit = useCallback((sha: string) => setSelection({ kind: "commit", sha }), []);
   const onSelectCommitFile = useCallback(
     (sha: string, file: GitDashboardFile) =>
@@ -333,7 +344,7 @@ function RepositoryView(props: {
                 </div>
               )}
             </PaneSection>
-            {overview.stashes.length > 0 ? (
+            {!compact && overview.stashes.length > 0 ? (
               <PaneSection
                 title="Stashes"
                 count={overview.stashes.length}
@@ -352,7 +363,7 @@ function RepositoryView(props: {
                 </ul>
               </PaneSection>
             ) : null}
-            {overview.worktrees.length > 1 || threadCount > 0 ? (
+            {!compact && (overview.worktrees.length > 1 || threadCount > 0) ? (
               <PaneSection
                 title="Worktrees & threads"
                 count={threadCount}

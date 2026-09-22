@@ -314,6 +314,7 @@ const CommitRow = memo(function CommitRow(props: {
       onClick={() => props.onSelect(commit.sha)}
       className={cn(
         "flex h-6.5 w-full min-w-0 items-center gap-1.5 pr-3 text-left text-sm [contain-intrinsic-size:auto_26px] [content-visibility:auto] hover:bg-accent/60",
+        props.expanded && "bg-accent/30",
         props.selected && "bg-accent hover:bg-accent",
       )}
     >

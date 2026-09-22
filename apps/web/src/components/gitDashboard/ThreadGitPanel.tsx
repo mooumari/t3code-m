@@ -51,6 +51,7 @@ export function ThreadGitPanel(props: { readonly threadRef: ScopedThreadRef }) {
         environmentId={checkout.environmentId}
         cwd={checkout.cwd}
         onSelectWorktree={openFullPage}
+        compact
         actions={
           <Button
             type="button"
