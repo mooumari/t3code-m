@@ -4,7 +4,6 @@ import { GitCommandError } from "./git.ts";
 
 export const GitDashboardOverviewInput = Schema.Struct({
   cwd: TrimmedNonEmptyString,
-  commitLimit: Schema.optionalKey(NonNegativeInt),
 });
 export type GitDashboardOverviewInput = typeof GitDashboardOverviewInput.Type;
 
@@ -63,16 +62,13 @@ export const GitDashboardBranch = Schema.Struct({
 });
 export type GitDashboardBranch = typeof GitDashboardBranch.Type;
 
-export const GitDashboardCommit = Schema.Struct({
-  sha: Schema.String,
-  shortSha: Schema.String,
-  subject: Schema.String,
-  authorName: Schema.String,
-  /** Unix seconds. */
-  authoredAt: Schema.Number,
-  refs: Schema.Array(Schema.String),
+export const GitDashboardRemoteBranch = Schema.Struct({
+  /** Short name such as `origin/main`. */
+  name: Schema.String,
+  /** Unix seconds of the tip commit. */
+  committedAt: Schema.NullOr(Schema.Number),
 });
-export type GitDashboardCommit = typeof GitDashboardCommit.Type;
+export type GitDashboardRemoteBranch = typeof GitDashboardRemoteBranch.Type;
 
 export const GitDashboardStash = Schema.Struct({
   ref: Schema.String,
@@ -92,7 +88,7 @@ export const GitDashboardOverviewResult = Schema.Struct({
   filesTruncated: Schema.Boolean,
   worktrees: Schema.Array(GitDashboardWorktree),
   branches: Schema.Array(GitDashboardBranch),
-  commits: Schema.Array(GitDashboardCommit),
+  remoteBranches: Schema.Array(GitDashboardRemoteBranch),
   stashes: Schema.Array(GitDashboardStash),
 });
 export type GitDashboardOverviewResult = typeof GitDashboardOverviewResult.Type;
@@ -102,8 +98,12 @@ export const GitDashboardDiffArea = Schema.Literals([
   "unstaged",
   "untracked",
   "conflicted",
+  "commit",
 ]);
 export type GitDashboardDiffArea = typeof GitDashboardDiffArea.Type;
+
+/** A full or abbreviated commit id. */
+export const GitDashboardSha = TrimmedNonEmptyString.check(Schema.isPattern(/^[0-9a-f]{4,64}$/));
 
 export const GitDashboardFileDiffInput = Schema.Struct({
   /** Repository root returned by the overview; file paths are relative to it. */
@@ -111,6 +111,8 @@ export const GitDashboardFileDiffInput = Schema.Struct({
   path: TrimmedNonEmptyString,
   previousPath: Schema.NullOr(TrimmedNonEmptyString),
   area: GitDashboardDiffArea,
+  /** The commit whose change to show; required when `area` is `commit`. */
+  sha: Schema.optionalKey(GitDashboardSha),
 });
 export type GitDashboardFileDiffInput = typeof GitDashboardFileDiffInput.Type;
 
@@ -119,6 +121,79 @@ export const GitDashboardFileDiffResult = Schema.Struct({
   truncated: Schema.Boolean,
 });
 export type GitDashboardFileDiffResult = typeof GitDashboardFileDiffResult.Type;
+
+// ---------------------------------------------------------------------------
+// Commit graph
+// ---------------------------------------------------------------------------
+
+/**
+ * Which history the graph shows. `auto` is the current branch and its upstream, `all` is
+ * every local and remote branch and tag, `refs` is the given branches.
+ */
+export const GitDashboardGraphScope = Schema.Literals(["auto", "all", "refs"]);
+export type GitDashboardGraphScope = typeof GitDashboardGraphScope.Type;
+
+export const GitDashboardGraphInput = Schema.Struct({
+  cwd: TrimmedNonEmptyString,
+  scope: GitDashboardGraphScope,
+  refs: Schema.optionalKey(
+    Schema.Array(TrimmedNonEmptyString.check(Schema.isMaxLength(255))).check(
+      Schema.isMaxLength(20),
+    ),
+  ),
+  limit: Schema.optionalKey(NonNegativeInt),
+});
+export type GitDashboardGraphInput = typeof GitDashboardGraphInput.Type;
+
+export const GitDashboardCommit = Schema.Struct({
+  sha: Schema.String,
+  shortSha: Schema.String,
+  parents: Schema.Array(Schema.String),
+  subject: Schema.String,
+  authorName: Schema.String,
+  /** Unix seconds. */
+  authoredAt: Schema.Number,
+  /** Decorations as git prints them, such as `HEAD -> main`, `origin/main`, `tag: v1`. */
+  refs: Schema.Array(Schema.String),
+});
+export type GitDashboardCommit = typeof GitDashboardCommit.Type;
+
+export const GitDashboardGraphResult = Schema.Struct({
+  commits: Schema.Array(GitDashboardCommit),
+  /** True when older commits exist beyond `limit`. */
+  hasMore: Schema.Boolean,
+  /** The current branch's upstream, such as `origin/main`. */
+  upstream: Schema.NullOr(Schema.String),
+  /** Commits on the current branch that its upstream lacks (not pushed yet). */
+  outgoing: Schema.Array(Schema.String),
+  /** Commits on the upstream that the current branch lacks (not pulled yet). */
+  incoming: Schema.Array(Schema.String),
+});
+export type GitDashboardGraphResult = typeof GitDashboardGraphResult.Type;
+
+export const GitDashboardCommitInput = Schema.Struct({
+  cwd: TrimmedNonEmptyString,
+  sha: GitDashboardSha,
+});
+export type GitDashboardCommitInput = typeof GitDashboardCommitInput.Type;
+
+export const GitDashboardCommitDetails = Schema.Struct({
+  sha: Schema.String,
+  parents: Schema.Array(Schema.String),
+  subject: Schema.String,
+  body: Schema.String,
+  authorName: Schema.String,
+  authorEmail: Schema.String,
+  /** Unix seconds. */
+  authoredAt: Schema.Number,
+  committerName: Schema.String,
+  /** Unix seconds. */
+  committedAt: Schema.Number,
+  /** Changes against the first parent, like `git show` for a regular commit. */
+  files: Schema.Array(GitDashboardFile),
+  filesTruncated: Schema.Boolean,
+});
+export type GitDashboardCommitDetails = typeof GitDashboardCommitDetails.Type;
 
 export const GitDashboardError = GitCommandError;
 export type GitDashboardError = typeof GitDashboardError.Type;

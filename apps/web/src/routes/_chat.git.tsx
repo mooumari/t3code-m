@@ -9,7 +9,6 @@ import {
   WorkspaceBreadcrumbItem,
   WorkspaceBreadcrumbSeparator,
 } from "../components/WorkspaceBreadcrumb";
-import { WorkspacePageContainer } from "../components/WorkspacePageContainer";
 import { WorkspacePageHeader } from "../components/WorkspacePageHeader";
 import { Button } from "../components/ui/button";
 import { Menu, MenuPopup, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "../components/ui/menu";
@@ -136,20 +135,16 @@ function GitDashboardRouteView() {
           ) : null}
         </WorkspacePageHeader>
 
-        <div className="topbar-scroll-fade scrollbar-gutter-both min-h-0 flex-1 overflow-y-auto">
-          <WorkspacePageContainer width="expanded" className="min-h-full gap-4">
-            {project && cwd ? (
-              <GitDashboardView
-                key={`${project.environmentId}:${cwd}`}
-                environmentId={project.environmentId}
-                cwd={cwd}
-                onSelectWorktree={selectWorktree}
-              />
-            ) : (
-              <p className="text-muted-foreground text-sm">Add a project to see its Git state.</p>
-            )}
-          </WorkspacePageContainer>
-        </div>
+        {project && cwd ? (
+          <GitDashboardView
+            key={`${project.environmentId}:${cwd}`}
+            environmentId={project.environmentId}
+            cwd={cwd}
+            onSelectWorktree={selectWorktree}
+          />
+        ) : (
+          <p className="p-4 text-muted-foreground text-sm">Add a project to see its Git state.</p>
+        )}
       </div>
     </SidebarInset>
   );
