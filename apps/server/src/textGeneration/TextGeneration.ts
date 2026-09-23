@@ -75,20 +75,16 @@ export interface ThreadTitleGenerationResult {
   needsRefinement?: boolean | undefined;
 }
 
-export interface TranslateTextInput {
+/** Fork: a free-form prompt answered with plain text, for the fork's own features. */
+export interface GenerateTextInput {
   cwd: string;
-  text: string;
-  /** The user message the text answers, used only to disambiguate terms. */
-  context?: string | undefined;
-  targetLanguage: string;
-  /** How to present the result, such as "explain it simply"; empty means a faithful translation. */
-  instructions?: string | undefined;
+  prompt: string;
   /** What model and provider to use for generation. */
   modelSelection: ModelSelection;
 }
 
-export interface TranslateTextResult {
-  translation: string;
+export interface GenerateTextResult {
+  text: string;
 }
 
 /**
@@ -123,10 +119,10 @@ export class TextGeneration extends Context.Service<
       input: ThreadTitleGenerationInput,
     ) => Effect.Effect<ThreadTitleGenerationResult, TextGenerationError>;
 
-    /** Translate chat text into another language, keeping its markdown intact. */
-    readonly translateText: (
-      input: TranslateTextInput,
-    ) => Effect.Effect<TranslateTextResult, TextGenerationError>;
+    /** Fork: answer a free-form prompt (translate, turn summary) with plain text. */
+    readonly generateText: (
+      input: GenerateTextInput,
+    ) => Effect.Effect<GenerateTextResult, TextGenerationError>;
   }
 >()("t3/textGeneration/TextGeneration") {}
 
@@ -135,7 +131,7 @@ type TextGenerationOp =
   | "generatePrContent"
   | "generateBranchName"
   | "generateThreadTitle"
-  | "translateText";
+  | "generateText";
 
 const resolveInstance = (
   registry: ProviderInstanceRegistry.ProviderInstanceRegistry["Service"],
@@ -188,9 +184,9 @@ export const make = Effect.gen(function* () {
           }),
         ),
       ),
-    translateText: (input) =>
-      resolveInstance(registry, "translateText", input.modelSelection.instanceId).pipe(
-        Effect.flatMap((textGeneration) => textGeneration.translateText(input)),
+    generateText: (input) =>
+      resolveInstance(registry, "generateText", input.modelSelection.instanceId).pipe(
+        Effect.flatMap((textGeneration) => textGeneration.generateText(input)),
       ),
   });
 });

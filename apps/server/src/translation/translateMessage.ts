@@ -8,6 +8,7 @@ import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { TextGeneration } from "../textGeneration/TextGeneration.ts";
+import { buildTranslatePrompt } from "./translatePrompt.ts";
 
 /**
  * Builds the handler that translates a chat message with the text generation model from
@@ -30,7 +31,7 @@ export const makeTranslateMessage = Effect.gen(function* () {
       Effect.mapError(
         (cause) =>
           new TextGenerationError({
-            operation: "translateText",
+            operation: "generateText",
             detail: "Could not read the text generation model from settings.",
             cause,
           }),
@@ -38,16 +39,14 @@ export const makeTranslateMessage = Effect.gen(function* () {
     );
     const { settings } = resolveProjectSettings(environmentSettings, input.projectId ?? null);
 
-    return yield* textGeneration.translateText({
+    const generated = yield* textGeneration.generateText({
       cwd: Option.match(project, {
         onNone: () => NodeOS.homedir(),
         onSome: (shell) => shell.workspaceRoot,
       }),
-      text: input.text,
-      context: input.context,
-      targetLanguage: input.targetLanguage,
-      instructions: input.instructions,
+      prompt: buildTranslatePrompt(input),
       modelSelection: settings.textGenerationModelSelection,
     });
+    return { translation: generated.text };
   });
 });
