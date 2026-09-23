@@ -1,7 +1,7 @@
 import { useRef, useState, type CSSProperties, type ReactNode } from "react";
 
 const STORAGE_KEY = "t3code:git-panel:changes-share";
-const DEFAULT_SHARE = 0.3;
+const DEFAULT_SHARE = 0.7;
 const MIN_SHARE = 0.1;
 const MAX_SHARE = 0.9;
 
