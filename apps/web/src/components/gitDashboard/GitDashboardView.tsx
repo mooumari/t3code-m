@@ -17,6 +17,7 @@ import { MiddleTruncate } from "../ui/middle-truncate";
 import { Spinner } from "../ui/spinner";
 import { useWorktreeThreads, WorktreeList } from "./GitAgents";
 import { GitBranchReview, type BranchReview } from "./GitBranchReview";
+import { GitSplitPanes } from "./GitSplitPanes";
 import { AheadBehind, FileRow, PaneSection } from "./gitDashboardShared";
 import { GitDetailsPane, type DetailSelection } from "./GitDetailsPane";
 import { GitGraph } from "./GitGraph";
@@ -223,6 +224,97 @@ function RepositoryView(props: {
           }
         : null;
 
+  const changesSection = (
+    <PaneSection
+      title="Changes"
+      {...(changeCount > 0 ? { count: changeCount } : { note: "clean" })}
+      fill={compact}
+      open={open.changes}
+      onOpenChange={(changes) => setOpen((previous) => ({ ...previous, changes }))}
+    >
+      {groups.length === 0 ? null : (
+        <div className="flex flex-col pb-2">
+          {groups.map((group) => (
+            <div key={group.area} className="flex flex-col">
+              {groups.length > 1 ? (
+                <div className="px-6 pt-1 pb-0.5 text-muted-foreground text-xs">
+                  {group.label} · {overview[group.area].length}
+                </div>
+              ) : null}
+              {overview[group.area].map((file) => (
+                <FileRow
+                  key={file.path}
+                  file={file}
+                  selected={
+                    visibleSelection?.kind === "working-file" &&
+                    visibleSelection.area === group.area &&
+                    visibleSelection.path === file.path
+                  }
+                  onSelect={() =>
+                    setSelection({
+                      kind: "working-file",
+                      area: group.area,
+                      path: file.path,
+                      previousPath: file.previousPath,
+                    })
+                  }
+                />
+              ))}
+            </div>
+          ))}
+          {overview.filesTruncated ? (
+            <p className="px-6 pt-1 text-warning-foreground text-xs">
+              Too many changed files to list them all.
+            </p>
+          ) : null}
+        </div>
+      )}
+    </PaneSection>
+  );
+  const graphSection = (
+    <PaneSection
+      title="Graph"
+      fill={compact}
+      open={open.graph}
+      onOpenChange={(graphOpen) => setOpen((previous) => ({ ...previous, graph: graphOpen }))}
+      actions={
+        <GraphScopePicker
+          scope={scope}
+          onScopeChange={changeScope}
+          currentBranch={head?.branch ?? null}
+          upstream={head?.upstream ?? null}
+          branches={overview.branches}
+          remoteBranches={overview.remoteBranches}
+          agentBranches={agentBranches}
+        />
+      }
+    >
+      {graph ? (
+        <GitGraph
+          environmentId={environmentId}
+          cwd={repoRoot}
+          graph={graph}
+          headSha={head?.sha ?? null}
+          remoteNames={remoteNames}
+          worktreeBranches={worktreeBranches}
+          agentBranches={agentBranches}
+          selection={graphSelection}
+          expanded={expanded}
+          onSelectCommit={onSelectCommit}
+          onSelectFile={onSelectCommitFile}
+          loadingMore={graphQuery.isPending && graphQuery.data === null}
+          onLoadMore={() => setLimit((previous) => previous + GRAPH_PAGE_SIZE)}
+        />
+      ) : graphQuery.error ? (
+        <p className="px-6 pb-2 text-destructive-foreground text-sm">{graphQuery.error}</p>
+      ) : (
+        <div className="flex items-center gap-2 px-6 pb-2 text-muted-foreground text-sm">
+          <Spinner className="size-3.5" /> Loading history…
+        </div>
+      )}
+    </PaneSection>
+  );
+
   // Side by side when wide; when narrow (a thread's panel), the lists and the details take turns.
   return (
     <div className="flex min-h-0 flex-1 flex-col @3xl/git:flex-row">
@@ -298,52 +390,16 @@ function RepositoryView(props: {
               })
             }
           />
+        ) : compact ? (
+          <GitSplitPanes
+            top={changesSection}
+            bottom={graphSection}
+            topOpen={open.changes}
+            bottomOpen={open.graph}
+          />
         ) : (
           <div className="min-h-0 flex-1 overflow-y-auto">
-            <PaneSection
-              title="Changes"
-              {...(changeCount > 0 ? { count: changeCount } : { note: "clean" })}
-              open={open.changes}
-              onOpenChange={(changes) => setOpen((previous) => ({ ...previous, changes }))}
-            >
-              {groups.length === 0 ? null : (
-                <div className="flex flex-col pb-2">
-                  {groups.map((group) => (
-                    <div key={group.area} className="flex flex-col">
-                      {groups.length > 1 ? (
-                        <div className="px-6 pt-1 pb-0.5 text-muted-foreground text-xs">
-                          {group.label} · {overview[group.area].length}
-                        </div>
-                      ) : null}
-                      {overview[group.area].map((file) => (
-                        <FileRow
-                          key={file.path}
-                          file={file}
-                          selected={
-                            visibleSelection?.kind === "working-file" &&
-                            visibleSelection.area === group.area &&
-                            visibleSelection.path === file.path
-                          }
-                          onSelect={() =>
-                            setSelection({
-                              kind: "working-file",
-                              area: group.area,
-                              path: file.path,
-                              previousPath: file.previousPath,
-                            })
-                          }
-                        />
-                      ))}
-                    </div>
-                  ))}
-                  {overview.filesTruncated ? (
-                    <p className="px-6 pt-1 text-warning-foreground text-xs">
-                      Too many changed files to list them all.
-                    </p>
-                  ) : null}
-                </div>
-              )}
-            </PaneSection>
+            {changesSection}
             {!compact && overview.stashes.length > 0 ? (
               <PaneSection
                 title="Stashes"
@@ -379,48 +435,7 @@ function RepositoryView(props: {
                 />
               </PaneSection>
             ) : null}
-            <PaneSection
-              title="Graph"
-              open={open.graph}
-              onOpenChange={(graphOpen) =>
-                setOpen((previous) => ({ ...previous, graph: graphOpen }))
-              }
-              actions={
-                <GraphScopePicker
-                  scope={scope}
-                  onScopeChange={changeScope}
-                  currentBranch={head?.branch ?? null}
-                  upstream={head?.upstream ?? null}
-                  branches={overview.branches}
-                  remoteBranches={overview.remoteBranches}
-                  agentBranches={agentBranches}
-                />
-              }
-            >
-              {graph ? (
-                <GitGraph
-                  environmentId={environmentId}
-                  cwd={repoRoot}
-                  graph={graph}
-                  headSha={head?.sha ?? null}
-                  remoteNames={remoteNames}
-                  worktreeBranches={worktreeBranches}
-                  agentBranches={agentBranches}
-                  selection={graphSelection}
-                  expanded={expanded}
-                  onSelectCommit={onSelectCommit}
-                  onSelectFile={onSelectCommitFile}
-                  loadingMore={graphQuery.isPending && graphQuery.data === null}
-                  onLoadMore={() => setLimit((previous) => previous + GRAPH_PAGE_SIZE)}
-                />
-              ) : graphQuery.error ? (
-                <p className="px-6 pb-2 text-destructive-foreground text-sm">{graphQuery.error}</p>
-              ) : (
-                <div className="flex items-center gap-2 px-6 pb-2 text-muted-foreground text-sm">
-                  <Spinner className="size-3.5" /> Loading history…
-                </div>
-              )}
-            </PaneSection>
+            {graphSection}
           </div>
         )}
       </div>

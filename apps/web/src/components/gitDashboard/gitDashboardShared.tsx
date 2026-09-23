@@ -63,12 +63,14 @@ export function PaneSection(props: {
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
   readonly actions?: ReactNode;
+  /** A pane of a split: the section takes the height it is given and scrolls its own body. */
+  readonly fill?: boolean;
   readonly children: ReactNode;
 }) {
   const Chevron = props.open ? ChevronDownIcon : ChevronRightIcon;
   return (
-    <section className="flex min-w-0 flex-col">
-      <header className="sticky top-0 z-10 flex h-8 items-center gap-1 bg-background pr-2">
+    <section className={cn("flex min-w-0 flex-col", props.fill && "min-h-0 flex-1")}>
+      <header className="sticky top-0 z-10 flex h-8 shrink-0 items-center gap-1 bg-background pr-2">
         <button
           type="button"
           aria-expanded={props.open}
@@ -90,7 +92,13 @@ export function PaneSection(props: {
         </button>
         {props.actions}
       </header>
-      {props.open ? props.children : null}
+      {props.open ? (
+        props.fill ? (
+          <div className="min-h-0 flex-1 overflow-y-auto">{props.children}</div>
+        ) : (
+          props.children
+        )
+      ) : null}
     </section>
   );
 }
