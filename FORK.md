@@ -82,9 +82,8 @@ These are the only places an update can conflict:
 - `packages/client-runtime/package.json`: exports for the new client state files.
 - `apps/server/src/ws.ts`, `auth/RpcAuthorization.ts`: the matching handlers. `server.ts`: registers the Git service.
 - `apps/server/src/textGeneration/*`: the `generateText` method in each provider.
-- `apps/web/src/components/chat/MessagesTimeline.tsx` (+ its test's mock): the Catch me up button (`// fork: turn summary`).
 - `apps/web/src/rightPanelStore.ts`, `components/RightPanelTabs.tsx`, `components/ChatView.tsx`: the Git tab (`// fork: Git tab`).
-- `apps/web/src/components/chat/MessagesTimeline.tsx`: the translate button.
+- `apps/web/src/components/chat/MessagesTimeline.tsx` (+ one mock in its test): the translate button and the Catch me up button (`// fork: turn summary`).
 - `apps/web/src/components/sidebar/SidebarChrome.tsx`: the Git page link.
 
 ## Testing
