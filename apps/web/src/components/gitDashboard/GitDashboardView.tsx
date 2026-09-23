@@ -18,7 +18,7 @@ import { Spinner } from "../ui/spinner";
 import { useWorktreeThreads, WorktreeList } from "./GitAgents";
 import { GitBranchReview, type BranchReview } from "./GitBranchReview";
 import { GitCommitBox } from "./GitCommitBox";
-import { GitSplitPanes } from "./GitSplitPanes";
+import { GitSplitPanes, type GitSplitPane } from "./GitSplitPanes";
 import { AheadBehind, FileRow, PaneSection } from "./gitDashboardShared";
 import { GitDetailsPane, type DetailSelection } from "./GitDetailsPane";
 import { GitGraph } from "./GitGraph";
@@ -234,7 +234,7 @@ function RepositoryView(props: {
     <PaneSection
       title="Changes"
       {...(changeCount > 0 ? { count: changeCount } : { note: "clean" })}
-      fill={compact}
+      fill
       open={open.changes}
       onOpenChange={(changes) => setOpen((previous) => ({ ...previous, changes }))}
     >
@@ -290,7 +290,7 @@ function RepositoryView(props: {
   const graphSection = (
     <PaneSection
       title="Graph"
-      fill={compact}
+      fill
       open={open.graph}
       onOpenChange={(graphOpen) => setOpen((previous) => ({ ...previous, graph: graphOpen }))}
       actions={
@@ -330,6 +330,76 @@ function RepositoryView(props: {
       )}
     </PaneSection>
   );
+
+  const panes: GitSplitPane[] = [
+    {
+      id: "changes",
+      label: "changes",
+      open: open.changes,
+      defaultWeight: compact ? 7 : 4,
+      node: changesSection,
+    },
+  ];
+  if (!compact && overview.stashes.length > 0) {
+    panes.push({
+      id: "stashes",
+      label: "stashes",
+      open: open.stashes,
+      defaultWeight: 1,
+      node: (
+        <PaneSection
+          fill
+          title="Stashes"
+          count={overview.stashes.length}
+          open={open.stashes}
+          onOpenChange={(stashes) => setOpen((previous) => ({ ...previous, stashes }))}
+        >
+          <ul className="flex flex-col pb-2">
+            {overview.stashes.map((stash) => (
+              <li key={stash.ref} className="flex h-6.5 items-center gap-2 px-6 text-sm">
+                <span className="shrink-0 font-mono text-muted-foreground text-xs">
+                  {stash.ref}
+                </span>
+                <span className="min-w-0 truncate">{stash.subject}</span>
+              </li>
+            ))}
+          </ul>
+        </PaneSection>
+      ),
+    });
+  }
+  if (!compact && (overview.worktrees.length > 1 || threadCount > 0)) {
+    panes.push({
+      id: "worktrees",
+      label: "worktrees",
+      open: open.worktrees,
+      defaultWeight: 2,
+      node: (
+        <PaneSection
+          fill
+          title="Worktrees & threads"
+          count={threadCount}
+          open={open.worktrees}
+          onOpenChange={(worktrees) => setOpen((previous) => ({ ...previous, worktrees }))}
+        >
+          <WorktreeList
+            worktrees={overview.worktrees}
+            threadsByWorktree={worktreeThreads.byWorktree}
+            defaultBranch={overview.defaultBranch}
+            onSelectWorktree={props.onSelectWorktree}
+            onReview={startReview}
+          />
+        </PaneSection>
+      ),
+    });
+  }
+  panes.push({
+    id: "graph",
+    label: "graph",
+    open: open.graph,
+    defaultWeight: compact ? 3 : 4,
+    node: graphSection,
+  });
 
   // Side by side when wide; when narrow (a thread's panel), the lists and the details take turns.
   return (
@@ -406,53 +476,11 @@ function RepositoryView(props: {
               })
             }
           />
-        ) : compact ? (
-          <GitSplitPanes
-            top={changesSection}
-            bottom={graphSection}
-            topOpen={open.changes}
-            bottomOpen={open.graph}
-          />
         ) : (
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            {changesSection}
-            {!compact && overview.stashes.length > 0 ? (
-              <PaneSection
-                title="Stashes"
-                count={overview.stashes.length}
-                open={open.stashes}
-                onOpenChange={(stashes) => setOpen((previous) => ({ ...previous, stashes }))}
-              >
-                <ul className="flex flex-col pb-2">
-                  {overview.stashes.map((stash) => (
-                    <li key={stash.ref} className="flex h-6.5 items-center gap-2 px-6 text-sm">
-                      <span className="shrink-0 font-mono text-muted-foreground text-xs">
-                        {stash.ref}
-                      </span>
-                      <span className="min-w-0 truncate">{stash.subject}</span>
-                    </li>
-                  ))}
-                </ul>
-              </PaneSection>
-            ) : null}
-            {!compact && (overview.worktrees.length > 1 || threadCount > 0) ? (
-              <PaneSection
-                title="Worktrees & threads"
-                count={threadCount}
-                open={open.worktrees}
-                onOpenChange={(worktrees) => setOpen((previous) => ({ ...previous, worktrees }))}
-              >
-                <WorktreeList
-                  worktrees={overview.worktrees}
-                  threadsByWorktree={worktreeThreads.byWorktree}
-                  defaultBranch={overview.defaultBranch}
-                  onSelectWorktree={props.onSelectWorktree}
-                  onReview={startReview}
-                />
-              </PaneSection>
-            ) : null}
-            {graphSection}
-          </div>
+          <GitSplitPanes
+            storageKey={compact ? "t3code:git-panel:pane-weights" : "t3code:git-page:pane-weights"}
+            panes={panes}
+          />
         )}
       </div>
       <div
