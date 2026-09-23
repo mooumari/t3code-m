@@ -15,11 +15,11 @@ import { useAtomCommand } from "~/state/use-atom-command";
 import { vcsEnvironment } from "~/state/vcs";
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
 import { Button } from "../ui/button";
-import { MiddleTruncate } from "../ui/middle-truncate";
 import { Spinner } from "../ui/spinner";
 import { toastManager } from "../ui/toast";
 import { useWorktreeThreads, WorktreeList } from "./GitAgents";
 import { GitBranchReview, type BranchReview } from "./GitBranchReview";
+import { GitCheckoutLabel } from "./GitCheckoutLabel";
 import { GitCommitBox } from "./GitCommitBox";
 import { GitSplitPanes, type GitSplitPane } from "./GitSplitPanes";
 import { AheadBehind, FileRow, PaneSection } from "./gitDashboardShared";
@@ -461,9 +461,10 @@ function RepositoryView(props: {
             <AheadBehind ahead={head?.aheadCount ?? 0} behind={head?.behindCount ?? 0} />
           </span>
           <span className="ml-auto flex min-w-0 max-w-full items-center gap-1">
-            <span className="min-w-0 px-2 font-mono text-muted-foreground text-xs @max-3xl/git:hidden">
-              <MiddleTruncate value={repoRoot} />
-            </span>
+            <GitCheckoutLabel
+              worktree={overview.worktrees.find((worktree) => worktree.isCurrent)}
+              path={repoRoot}
+            />
             {head?.branch && !review ? (
               <Button
                 type="button"

@@ -55,6 +55,7 @@ Code: `apps/web/src/components/chat/MessageTranslation.tsx`, `messageTranslation
 **Git tab in every thread** (right panel, shortcut `G`). The same view, scoped to the thread's worktree:
 
 - only Changes and Graph, with a draggable split,
+- a label next to the branch, "Main checkout" or "Worktree · <folder>", saying which checkout the thread works in (hover for the path, click to copy),
 - commits expand in place,
 - the full commit message on hover.
 
