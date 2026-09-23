@@ -166,6 +166,7 @@ import {
 } from "./timelineScrollAnchoring";
 import { MessageCopyButton } from "./MessageCopyButton";
 import { MessageTranslateButton, MessageTranslationPanel } from "./MessageTranslation";
+import { TurnSummaryButton } from "./TurnSummary"; // fork: turn summary
 import { PierreEntryIcon } from "./PierreEntryIcon";
 import { inferEntryKindFromPath } from "../../pierre-icons";
 import { AssistantSelectionToolbar } from "./AssistantSelectionToolbar";
@@ -2513,6 +2514,7 @@ function ProposedPlanTimelineRow({
 function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "working" }> }) {
   const { isCompacting, isPreparingWorktree, backgroundWorktreeSetup } =
     use(TimelineRowActivityCtx);
+  const ctx = use(TimelineRowCtx); // fork: turn summary
   // One span for every label so the setup-to-working handoff swaps text in
   // place instead of remounting the row.
   const shimmer = isPreparingWorktree || isCompacting;
@@ -2539,6 +2541,16 @@ function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "workin
         </span>
         {backgroundWorktreeSetup ? (
           <BackgroundWorktreeSetupChip snapshot={backgroundWorktreeSetup} />
+        ) : null}
+        {/* fork: turn summary */}
+        {ctx.threadRef ? (
+          <span className="ml-auto self-center">
+            <TurnSummaryButton
+              threadRef={ctx.threadRef}
+              runStartedAt={row.createdAt}
+              cwd={ctx.markdownCwd}
+            />
+          </span>
         ) : null}
       </div>
     </div>

@@ -135,6 +135,9 @@ vi.mock("../DiffWorkerPoolProvider", () => ({
   DiffWorkerPoolProvider: ({ children }: { children?: ReactNode }) => children,
 }));
 
+// fork: turn summary. Its popover trigger needs a DOM, which this renderer lacks.
+vi.mock("./TurnSummary", () => ({ TurnSummaryButton: () => null }));
+
 function matchMedia() {
   return {
     matches: false,

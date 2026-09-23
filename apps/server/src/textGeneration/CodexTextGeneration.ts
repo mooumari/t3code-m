@@ -27,7 +27,7 @@ import {
   buildCommitMessagePrompt,
   buildPrContentPrompt,
   buildThreadTitlePrompt,
-  buildTranslatePrompt,
+  GenerateTextOutput,
 } from "./TextGenerationPrompts.ts";
 import {
   normalizeCliError,
@@ -105,7 +105,7 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
       | "generatePrContent"
       | "generateBranchName"
       | "generateThreadTitle"
-      | "translateText",
+      | "generateText",
     value: unknown,
   ): Effect.Effect<string, TextGenerationError> =>
     encodeJsonString(value).pipe(
@@ -125,7 +125,7 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
       | "generatePrContent"
       | "generateBranchName"
       | "generateThreadTitle"
-      | "translateText",
+      | "generateText",
     attachments: TextGeneration.BranchNameGenerationInput["attachments"],
   ): Effect.fn.Return<MaterializedImageAttachments, TextGenerationError> {
     if (!attachments || attachments.length === 0) {
@@ -168,7 +168,7 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
       | "generatePrContent"
       | "generateBranchName"
       | "generateThreadTitle"
-      | "translateText";
+      | "generateText";
     cwd: string;
     prompt: string;
     outputSchemaJson: S;
@@ -421,18 +421,17 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
       } satisfies TextGeneration.ThreadTitleGenerationResult;
     });
 
-  const translateText: TextGeneration.TextGeneration["Service"]["translateText"] = Effect.fn(
-    "CodexTextGeneration.translateText",
+  const generateText: TextGeneration.TextGeneration["Service"]["generateText"] = Effect.fn(
+    "CodexTextGeneration.generateText",
   )(function* (input) {
-    const { prompt, outputSchema } = buildTranslatePrompt(input);
     const generated = yield* runCodexJson({
-      operation: "translateText",
+      operation: "generateText",
       cwd: input.cwd,
-      prompt,
-      outputSchemaJson: outputSchema,
+      prompt: input.prompt,
+      outputSchemaJson: GenerateTextOutput,
       modelSelection: input.modelSelection,
     });
-    return { translation: generated.translation.trim() };
+    return { text: generated.text.trim() };
   });
 
   return {
@@ -440,6 +439,6 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
-    translateText,
+    generateText,
   } satisfies TextGeneration.TextGeneration["Service"];
 });

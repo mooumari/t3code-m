@@ -187,6 +187,10 @@
       "types": "./src/state/translation.ts",
       "default": "./src/state/translation.ts"
     },
+    "./state/turnSummary": {
+      "types": "./src/state/turnSummary.ts",
+      "default": "./src/state/turnSummary.ts"
+    },
     "./state/review": {
       "types": "./src/state/review.ts",
       "default": "./src/state/review.ts"

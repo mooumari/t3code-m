@@ -41,6 +41,15 @@ git push origin my-t3
 
 Code: `apps/web/src/components/chat/MessageTranslation.tsx`, `messageTranslations.ts`, and `apps/server/src/translation/`.
 
+**Catch me up** (button on the "Working for…" row). A small model reads the current run and says what the agent was asked, what it has done, what it is on now, and anything that needs you. It never touches the agent.
+
+- The server builds a compact log of the run in SQL: your request, the agent's messages, and one line per tool call (Claude's own descriptions, commands, edited paths). Tool output is never sent. Long runs keep their start and latest work, so a 2-hour run is about 4k tokens.
+- Uses Settings → Text generation, like Translate. Results are kept in memory per thread; reopening shows the last one, and it refreshes on demand.
+
+Code: `apps/server/src/turnSummary/` (`turnDigest.ts` is the pure part, with tests), `apps/web/src/components/chat/TurnSummary.tsx`.
+
+**Fork text generation.** Translate and Catch me up share one provider method, `generateText` (prompt in, text out). A new fork feature that needs a model should build its prompt in its own folder and call that, not add another method to every provider.
+
 **Git page** (`/git`, route in `apps/web/src/routes/_chat.git.tsx`). It works like VS Code's Source Control:
 
 - resizable sections (drag the dividers),
@@ -72,15 +81,15 @@ These are the only places an update can conflict:
 - `packages/contracts/src/rpc.ts`, `index.ts`: RPC entries for translate and Git.
 - `packages/client-runtime/package.json`: exports for the new client state files.
 - `apps/server/src/ws.ts`, `auth/RpcAuthorization.ts`: the matching handlers. `server.ts`: registers the Git service.
-- `apps/server/src/textGeneration/*`: a translate method in each provider.
+- `apps/server/src/textGeneration/*`: the `generateText` method in each provider.
 - `apps/web/src/rightPanelStore.ts`, `components/RightPanelTabs.tsx`, `components/ChatView.tsx`: the Git tab (`// fork: Git tab`).
-- `apps/web/src/components/chat/MessagesTimeline.tsx`: the translate button.
+- `apps/web/src/components/chat/MessagesTimeline.tsx` (+ one mock in its test): the translate button and the Catch me up button (`// fork: turn summary`).
 - `apps/web/src/components/sidebar/SidebarChrome.tsx`: the Git page link.
 
 ## Testing
 
 - Web tests: `cd apps/web && ../../node_modules/.bin/vp test run src/components/gitDashboard src/components/chat/messageTranslations.test.ts`
-- Server tests: `cd apps/server && ../../node_modules/.bin/vp test run src/gitDashboard`
+- Server tests: `cd apps/server && ../../node_modules/.bin/vp test run src/gitDashboard src/turnSummary src/translation`
 - **Dev server:** use a copy of your data, never the real `~/.t3/userdata` (see AGENTS.md → Test data). Run `node scripts/dev-runner.ts dev --home-dir "$PWD/.t3"`.
   - Stop it by killing the whole process tree started from the PID you captured. Killing the runner alone leaves vite and the server running.
 - **The Git tab works on real project folders.** Committing or syncing from a test server makes real commits and pushes.
@@ -90,4 +99,5 @@ These are the only places an update can conflict:
 - Staging part of a file (hunks). A partly staged file is committed whole.
 - Discard changes (VS Code's ↶ button). Left out on purpose because it destroys work.
 - A lighter AI commit-message input: a smaller diff cutoff, and skipping lockfiles and generated files.
-- Mobile versions of Translate and Git.
+- Mobile versions of Translate, Git and Catch me up.
+- Catch me up after a run has finished (the button lives on the working row, which goes away then).
