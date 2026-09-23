@@ -17,6 +17,7 @@ import { MiddleTruncate } from "../ui/middle-truncate";
 import { Spinner } from "../ui/spinner";
 import { useWorktreeThreads, WorktreeList } from "./GitAgents";
 import { GitBranchReview, type BranchReview } from "./GitBranchReview";
+import { GitCommitBox } from "./GitCommitBox";
 import { GitSplitPanes } from "./GitSplitPanes";
 import { AheadBehind, FileRow, PaneSection } from "./gitDashboardShared";
 import { GitDetailsPane, type DetailSelection } from "./GitDetailsPane";
@@ -159,6 +160,11 @@ function RepositoryView(props: {
     () => new Set(worktreeThreads.byBranch.keys()),
     [worktreeThreads.byBranch],
   );
+  const currentWorktreePath =
+    overview.worktrees.find((worktree) => worktree.isCurrent)?.path ?? repoRoot;
+  const workingThreadCount = (worktreeThreads.byWorktree.get(currentWorktreePath) ?? []).filter(
+    (thread) => thread.status === "working",
+  ).length;
   const threadCount = [...worktreeThreads.byWorktree.values()].reduce(
     (total, threads) => total + threads.length,
     0,
@@ -232,6 +238,16 @@ function RepositoryView(props: {
       open={open.changes}
       onOpenChange={(changes) => setOpen((previous) => ({ ...previous, changes }))}
     >
+      <GitCommitBox
+        environmentId={environmentId}
+        cwd={repoRoot}
+        branch={head?.detached ? null : (head?.branch ?? null)}
+        hasUpstream={head?.upstream != null}
+        changeCount={changeCount}
+        aheadCount={head?.aheadCount ?? 0}
+        behindCount={head?.behindCount ?? 0}
+        workingThreadCount={workingThreadCount}
+      />
       {groups.length === 0 ? null : (
         <div className="flex flex-col pb-2">
           {groups.map((group) => (
