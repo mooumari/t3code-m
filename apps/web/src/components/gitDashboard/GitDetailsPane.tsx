@@ -1,5 +1,5 @@
 import type { EnvironmentId, GitDashboardDiffArea, GitDashboardFile } from "@t3tools/contracts";
-import { ArrowLeftIcon, GitCommitHorizontalIcon } from "lucide-react";
+import { ArrowLeftIcon, ChevronLeftIcon, GitCommitHorizontalIcon } from "lucide-react";
 
 import { gitDashboardEnvironment } from "~/state/gitDashboard";
 import { useEnvironmentQuery } from "~/state/query";
@@ -9,11 +9,13 @@ import { MessageCopyButton } from "../chat/MessageCopyButton";
 import { GitDashboardDiff } from "./GitDashboardDiff";
 import { FileRow, relativeFromUnix } from "./gitDashboardShared";
 
+type WorkingArea = Exclude<GitDashboardDiffArea, "commit" | "comparison">;
+
 /** What the right pane shows. */
 export type DetailSelection =
   | {
       readonly kind: "working-file";
-      readonly area: Exclude<GitDashboardDiffArea, "commit">;
+      readonly area: WorkingArea;
       readonly path: string;
       readonly previousPath: string | null;
     }
@@ -23,9 +25,19 @@ export type DetailSelection =
       readonly sha: string;
       readonly path: string;
       readonly previousPath: string | null;
+    }
+  | {
+      /** A file of a branch review, from the merge base of `base` to `headSha`. */
+      readonly kind: "comparison-file";
+      readonly base: string;
+      readonly head: string;
+      readonly baseSha: string;
+      readonly headSha: string;
+      readonly path: string;
+      readonly previousPath: string | null;
     };
 
-const AREA_LABEL: Record<Exclude<GitDashboardDiffArea, "commit">, string> = {
+const AREA_LABEL: Record<WorkingArea, string> = {
   staged: "Staged changes",
   unstaged: "Changes",
   untracked: "New file",
@@ -38,6 +50,8 @@ export function GitDetailsPane(props: {
   readonly selection: DetailSelection | null;
   readonly onSelectCommit: (sha: string) => void;
   readonly onSelectCommitFile: (sha: string, file: GitDashboardFile) => void;
+  /** Returns to the lists when the pane is too narrow to show both. */
+  readonly onBack: () => void;
 }) {
   const { selection } = props;
   if (selection === null) {
@@ -47,11 +61,25 @@ export function GitDetailsPane(props: {
       </div>
     );
   }
+  const back = (
+    <div className="@3xl/git:hidden">
+      <Button type="button" size="xs" variant="ghost" onClick={props.onBack}>
+        <ChevronLeftIcon aria-hidden />
+        Back
+      </Button>
+    </div>
+  );
   if (selection.kind === "commit") {
-    return <CommitDetails {...props} sha={selection.sha} />;
+    return (
+      <>
+        <div className="px-2 pt-2">{back}</div>
+        <CommitDetails {...props} sha={selection.sha} />
+      </>
+    );
   }
   return (
     <div className="flex flex-col gap-3 p-4">
+      {back}
       <header className="flex min-w-0 flex-col gap-1">
         <h2 className="truncate font-mono text-sm">{selection.path}</h2>
         {selection.kind === "commit-file" ? (
@@ -64,6 +92,10 @@ export function GitDetailsPane(props: {
             <ArrowLeftIcon aria-hidden />
             Commit {selection.sha.slice(0, 8)}
           </Button>
+        ) : selection.kind === "comparison-file" ? (
+          <p className="truncate text-muted-foreground text-xs">
+            Changes on {selection.head} since it left {selection.base}
+          </p>
         ) : (
           <p className="text-muted-foreground text-xs">{AREA_LABEL[selection.area]}</p>
         )}
@@ -76,7 +108,9 @@ export function GitDetailsPane(props: {
           previousPath: selection.previousPath,
           ...(selection.kind === "commit-file"
             ? { area: "commit" as const, sha: selection.sha }
-            : { area: selection.area }),
+            : selection.kind === "comparison-file"
+              ? { area: "comparison" as const, sha: selection.headSha, baseSha: selection.baseSha }
+              : { area: selection.area }),
         }}
       />
     </div>

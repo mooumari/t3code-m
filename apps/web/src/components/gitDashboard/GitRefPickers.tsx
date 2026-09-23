@@ -3,7 +3,14 @@ import type {
   GitDashboardRemoteBranch,
   GitDashboardWorktree,
 } from "@t3tools/contracts";
-import { ChevronDownIcon, CloudIcon, FolderGit2Icon, GitBranchIcon, LockIcon } from "lucide-react";
+import {
+  BotIcon,
+  ChevronDownIcon,
+  CloudIcon,
+  FolderGit2Icon,
+  GitBranchIcon,
+  LockIcon,
+} from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
@@ -36,13 +43,11 @@ export function GraphScopePicker(props: {
   readonly upstream: string | null;
   readonly branches: ReadonlyArray<GitDashboardBranch>;
   readonly remoteBranches: ReadonlyArray<GitDashboardRemoteBranch>;
+  readonly agentBranches: ReadonlySet<string>;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const needle = query.trim().toLowerCase();
-  const matches = (name: string) => needle.length === 0 || name.toLowerCase().includes(needle);
-  const local = props.branches.filter((branch) => matches(branch.name));
-  const remote = props.remoteBranches.filter((branch) => matches(branch.name));
 
   const choose = (scope: GraphScope) => {
     props.onScopeChange(scope);
@@ -98,49 +103,130 @@ export function GraphScopePicker(props: {
                 />
               </PickerGroup>
             ) : null}
-            <PickerGroup label="Local" count={local.length}>
-              {local.slice(0, MAX_LISTED_BRANCHES).map((branch) => (
-                <PickerItem
-                  key={branch.name}
-                  chosen={isChosen({ kind: "branch", name: branch.name })}
-                  onClick={() => choose({ kind: "branch", name: branch.name })}
-                  title={branch.name}
-                  badges={
-                    <>
-                      {branch.isCurrent ? (
-                        <Badge size="sm" variant="info">
-                          HEAD
-                        </Badge>
-                      ) : null}
-                      {branch.worktreePath && !branch.isCurrent ? (
-                        <FolderGit2Icon
-                          aria-label="checked out in a worktree"
-                          className="size-3 text-muted-foreground"
-                        />
-                      ) : null}
-                      <AheadBehind ahead={branch.aheadCount} behind={branch.behindCount} />
-                    </>
-                  }
-                  detail={relativeFromUnix(branch.committedAt)}
-                />
-              ))}
-            </PickerGroup>
-            <PickerGroup label="Remote" count={remote.length}>
-              {remote.slice(0, MAX_LISTED_BRANCHES).map((branch) => (
-                <PickerItem
-                  key={branch.name}
-                  chosen={isChosen({ kind: "branch", name: branch.name })}
-                  onClick={() => choose({ kind: "branch", name: branch.name })}
-                  title={branch.name}
-                  badges={<CloudIcon aria-hidden className="size-3 text-muted-foreground" />}
-                  detail={relativeFromUnix(branch.committedAt)}
-                />
-              ))}
-            </PickerGroup>
+            <BranchLists
+              needle={needle}
+              branches={props.branches}
+              remoteBranches={props.remoteBranches}
+              agentBranches={props.agentBranches}
+              isChosen={(name) => isChosen({ kind: "branch", name })}
+              onChoose={(name) => choose({ kind: "branch", name })}
+            />
           </div>
         </div>
       </PopoverPopup>
     </Popover>
+  );
+}
+
+/** One branch to compare, such as the base of a review. */
+export function BranchPicker(props: {
+  readonly label: string;
+  readonly value: string;
+  readonly onChange: (name: string) => void;
+  readonly branches: ReadonlyArray<GitDashboardBranch>;
+  readonly remoteBranches: ReadonlyArray<GitDashboardRemoteBranch>;
+  readonly agentBranches: ReadonlySet<string>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const choose = (name: string) => {
+    props.onChange(name);
+    setOpen(false);
+    setQuery("");
+  };
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger
+        render={<Button type="button" size="xs" variant="outline" aria-label={props.label} />}
+      >
+        <GitBranchIcon aria-hidden className="size-3.5" />
+        <span className="max-w-40 truncate">{props.value}</span>
+        <ChevronDownIcon aria-hidden className="size-3" />
+      </PopoverTrigger>
+      <PopoverPopup side="bottom" align="start" width="md">
+        <div className="flex max-h-[min(32rem,70vh)] flex-col gap-2">
+          <Input
+            autoFocus
+            aria-label="Search branches"
+            placeholder="Search branches"
+            size="sm"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+          <div className="-mx-1 min-h-0 overflow-y-auto">
+            <BranchLists
+              needle={query.trim().toLowerCase()}
+              branches={props.branches}
+              remoteBranches={props.remoteBranches}
+              agentBranches={props.agentBranches}
+              isChosen={(name) => name === props.value}
+              onChoose={choose}
+            />
+          </div>
+        </div>
+      </PopoverPopup>
+    </Popover>
+  );
+}
+
+function BranchLists(props: {
+  readonly needle: string;
+  readonly branches: ReadonlyArray<GitDashboardBranch>;
+  readonly remoteBranches: ReadonlyArray<GitDashboardRemoteBranch>;
+  /** Branches a thread is working on. */
+  readonly agentBranches: ReadonlySet<string>;
+  readonly isChosen: (name: string) => boolean;
+  readonly onChoose: (name: string) => void;
+}) {
+  const matches = (name: string) =>
+    props.needle.length === 0 || name.toLowerCase().includes(props.needle);
+  const local = props.branches.filter((branch) => matches(branch.name));
+  const remote = props.remoteBranches.filter((branch) => matches(branch.name));
+  return (
+    <>
+      <PickerGroup label="Local" count={local.length}>
+        {local.slice(0, MAX_LISTED_BRANCHES).map((branch) => (
+          <PickerItem
+            key={branch.name}
+            chosen={props.isChosen(branch.name)}
+            onClick={() => props.onChoose(branch.name)}
+            title={branch.name}
+            badges={
+              <>
+                {branch.isCurrent ? (
+                  <Badge size="sm" variant="info">
+                    HEAD
+                  </Badge>
+                ) : null}
+                {branch.worktreePath && !branch.isCurrent ? (
+                  <FolderGit2Icon
+                    aria-label="checked out in a worktree"
+                    className="size-3 text-muted-foreground"
+                  />
+                ) : null}
+                {props.agentBranches.has(branch.name) ? (
+                  <BotIcon aria-label="a thread works here" className="size-3 text-sky-500" />
+                ) : null}
+                <AheadBehind ahead={branch.aheadCount} behind={branch.behindCount} />
+              </>
+            }
+            detail={relativeFromUnix(branch.committedAt)}
+          />
+        ))}
+      </PickerGroup>
+      <PickerGroup label="Remote" count={remote.length}>
+        {remote.slice(0, MAX_LISTED_BRANCHES).map((branch) => (
+          <PickerItem
+            key={branch.name}
+            chosen={props.isChosen(branch.name)}
+            onClick={() => props.onChoose(branch.name)}
+            title={branch.name}
+            badges={<CloudIcon aria-hidden className="size-3 text-muted-foreground" />}
+            detail={relativeFromUnix(branch.committedAt)}
+          />
+        ))}
+      </PickerGroup>
+    </>
   );
 }
 

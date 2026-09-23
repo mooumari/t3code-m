@@ -184,6 +184,56 @@ describe("GitDashboardService", () => {
     }).pipe(Effect.provide(TestLayer)),
   );
 
+  it.effect("compares a branch with its base from the merge base", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const cwd = yield* makeRepo;
+      yield* git(cwd, ["checkout", "-b", "feature"]);
+      yield* fs.writeFileString(path.join(cwd, "feature.ts"), "export const a = 1;\n");
+      yield* git(cwd, ["add", "."]);
+      yield* git(cwd, ["commit", "-m", "add feature"]);
+      yield* git(cwd, ["checkout", "main"]);
+      yield* fs.writeFileString(path.join(cwd, "README.md"), "# moved on\n");
+      yield* git(cwd, ["commit", "-am", "main moves on"]);
+
+      const dashboard = yield* GitDashboardService.GitDashboardService;
+      const overview = yield* dashboard.getOverview({ cwd });
+      assert.strictEqual(overview.defaultBranch, "main");
+
+      const comparison = yield* dashboard.getComparison({ cwd, base: "main", head: "feature" });
+      assert.deepStrictEqual(
+        comparison.commits.map((commit) => commit.subject),
+        ["add feature"],
+      );
+      assert.strictEqual(comparison.behindCount, 1);
+      // README changed only on main, so the branch's own changes are just the new file.
+      assert.deepStrictEqual(
+        comparison.files.map((file) => [file.change, file.path]),
+        [["added", "feature.ts"]],
+      );
+
+      const diff = yield* dashboard.getFileDiff({
+        cwd,
+        path: "feature.ts",
+        previousPath: null,
+        area: "comparison",
+        sha: comparison.headSha,
+        baseSha: comparison.baseSha,
+      });
+      assert.include(diff.patch, "+export const a = 1;");
+
+      const rejected = yield* dashboard
+        .getComparison({ cwd, base: "main", head: "--output=/tmp/x" })
+        .pipe(Effect.flip);
+      assert.match(rejected.detail, /cannot start with/);
+      const missing = yield* dashboard
+        .getComparison({ cwd, base: "main", head: "nope" })
+        .pipe(Effect.flip);
+      assert.match(missing.detail, /Unknown branch nope/);
+    }).pipe(Effect.provide(TestLayer)),
+  );
+
   it.effect("reports non-repositories without failing", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;

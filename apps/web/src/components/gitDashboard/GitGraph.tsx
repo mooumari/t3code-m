@@ -4,8 +4,16 @@ import type {
   GitDashboardFile,
   GitDashboardGraphResult,
 } from "@t3tools/contracts";
-import { ArrowDownIcon, ArrowUpIcon, CloudIcon, FolderGit2Icon, TagIcon } from "lucide-react";
-import { memo, useMemo, type ReactNode } from "react";
+import {
+  ArrowDownIcon,
+  ArrowUpIcon,
+  BotIcon,
+  CloudIcon,
+  FolderGit2Icon,
+  TagIcon,
+} from "lucide-react";
+import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip";
+import { memo, useMemo, useState, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
 import { gitDashboardEnvironment } from "~/state/gitDashboard";
@@ -13,7 +21,8 @@ import { useEnvironmentQuery } from "~/state/query";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
-import { FileRow, relativeFromUnix } from "./gitDashboardShared";
+import { Tooltip, TooltipPopup } from "../ui/tooltip";
+import { FileRow, relativeFromUnix, shortRelativeFromUnix } from "./gitDashboardShared";
 import { layoutGraph, type GraphRow } from "./gitGraphLayout";
 
 const LANE_WIDTH = 12;
@@ -148,38 +157,82 @@ function parseRefs(refs: ReadonlyArray<string>, remoteNames: ReadonlySet<string>
 }
 
 const MAX_CHIPS = 3;
+/** Long enough that moving across the list does not flash messages. */
+const COMMIT_TOOLTIP_DELAY_MS = 700;
+
+type CommitTooltipHandle = ReturnType<typeof TooltipPrimitive.createHandle<GitDashboardCommit>>;
+
+/** The whole commit message, fetched once the tooltip opens and cached with the commit. */
+function CommitTooltipContent(props: {
+  readonly environmentId: EnvironmentId;
+  readonly cwd: string;
+  readonly commit: GitDashboardCommit;
+}) {
+  const { commit } = props;
+  const detailsQuery = useEnvironmentQuery(
+    gitDashboardEnvironment.commit({
+      environmentId: props.environmentId,
+      input: { cwd: props.cwd, sha: commit.sha },
+    }),
+  );
+  const body = detailsQuery.data?.body;
+  return (
+    <div className="flex flex-col gap-1 py-0.5">
+      <span className="font-medium">{commit.subject}</span>
+      {body ? <span className="whitespace-pre-wrap text-muted-foreground">{body}</span> : null}
+      <span className="text-muted-foreground">
+        {commit.authorName} · {relativeFromUnix(commit.authoredAt)} ·{" "}
+        <span className="font-mono">{commit.shortSha}</span>
+      </span>
+    </div>
+  );
+}
 
 function RefChips(props: {
   readonly chips: ReadonlyArray<RefChip>;
   readonly worktreeBranches: ReadonlyMap<string, string>;
+  readonly agentBranches: ReadonlySet<string>;
 }) {
   const shown = props.chips.slice(0, MAX_CHIPS);
   const hidden = props.chips.slice(MAX_CHIPS);
   return (
     <span className="flex shrink-0 items-center gap-1">
       {shown.map((chip) => {
+        // A narrow panel only labels the checked-out branch; the branch picker lists the rest.
+        const narrowHidden = chip.kind !== "head";
         const worktreePath =
           chip.kind === "tag" ? undefined : props.worktreeBranches.get(chip.name);
         return (
-          <Badge
+          <span
             key={`${chip.kind}:${chip.name}`}
-            size="sm"
-            variant={
-              chip.kind === "head" ? "info" : chip.kind === "remote" ? "secondary" : "outline"
-            }
-            title={worktreePath ? `${chip.name} is checked out in ${worktreePath}` : chip.name}
+            className={cn(narrowHidden && "@max-3xl/git:hidden")}
           >
-            {chip.kind === "remote" ? <CloudIcon aria-hidden /> : null}
-            {chip.kind === "tag" ? <TagIcon aria-hidden /> : null}
-            {worktreePath ? <FolderGit2Icon aria-label="worktree" /> : null}
-            <span className="max-w-40 truncate">{chip.name}</span>
-          </Badge>
+            <Badge
+              size="sm"
+              variant={
+                chip.kind === "head" ? "info" : chip.kind === "remote" ? "secondary" : "outline"
+              }
+              title={worktreePath ? `${chip.name} is checked out in ${worktreePath}` : chip.name}
+            >
+              {chip.kind === "remote" ? <CloudIcon aria-hidden /> : null}
+              {chip.kind === "tag" ? <TagIcon aria-hidden /> : null}
+              {worktreePath ? <FolderGit2Icon aria-label="worktree" /> : null}
+              {chip.kind !== "remote" &&
+              chip.kind !== "tag" &&
+              props.agentBranches.has(chip.name) ? (
+                <BotIcon aria-label="a thread works here" className="text-sky-500" />
+              ) : null}
+              <span className="max-w-40 truncate">{chip.name}</span>
+            </Badge>
+          </span>
         );
       })}
       {hidden.length > 0 ? (
-        <Badge size="sm" variant="outline" title={hidden.map((chip) => chip.name).join(", ")}>
-          +{hidden.length}
-        </Badge>
+        <span className="@max-3xl/git:hidden">
+          <Badge size="sm" variant="outline" title={hidden.map((chip) => chip.name).join(", ")}>
+            +{hidden.length}
+          </Badge>
+        </span>
       ) : null}
     </span>
   );
@@ -199,6 +252,8 @@ export function GitGraph(props: {
   readonly remoteNames: ReadonlySet<string>;
   /** Branch name → path, for branches checked out in another worktree. */
   readonly worktreeBranches: ReadonlyMap<string, string>;
+  /** Branches a thread is working on. */
+  readonly agentBranches: ReadonlySet<string>;
   readonly selection: GraphSelection | null;
   readonly expanded: ReadonlySet<string>;
   readonly onSelectCommit: (sha: string) => void;
@@ -212,6 +267,8 @@ export function GitGraph(props: {
     MAX_VISIBLE_LANES,
     rows.reduce((widest, row) => Math.max(widest, row.width), 1),
   );
+  // One tooltip serves every row, so long histories do not mount a tooltip per commit.
+  const [tooltip] = useState(() => TooltipPrimitive.createHandle<GitDashboardCommit>());
   const outgoing = useMemo(() => new Set(graph.outgoing), [graph.outgoing]);
   const incoming = useMemo(() => new Set(graph.incoming), [graph.incoming]);
 
@@ -221,6 +278,19 @@ export function GitGraph(props: {
 
   return (
     <ol className="flex flex-col pb-2">
+      <Tooltip handle={tooltip}>
+        {({ payload }) =>
+          payload ? (
+            <TooltipPopup side="bottom" align="start">
+              <CommitTooltipContent
+                environmentId={props.environmentId}
+                cwd={props.cwd}
+                commit={payload}
+              />
+            </TooltipPopup>
+          ) : null
+        }
+      </Tooltip>
       {graph.commits.map((commit, index) => (
         <li key={commit.sha}>
           <CommitRow
@@ -233,9 +303,11 @@ export function GitGraph(props: {
             }
             remoteNames={props.remoteNames}
             worktreeBranches={props.worktreeBranches}
+            agentBranches={props.agentBranches}
             selected={props.selection?.sha === commit.sha && props.selection.path === null}
             expanded={props.expanded.has(commit.sha)}
             onSelect={props.onSelectCommit}
+            tooltip={tooltip}
           />
           {props.expanded.has(commit.sha) ? (
             <CommitFiles
@@ -269,12 +341,14 @@ export function GitGraph(props: {
 
 const CommitRow = memo(function CommitRow(props: {
   readonly commit: GitDashboardCommit;
+  readonly tooltip: CommitTooltipHandle;
   readonly row: GraphRow;
   readonly columns: number;
   readonly isHead: boolean;
   readonly direction: "outgoing" | "incoming" | null;
   readonly remoteNames: ReadonlySet<string>;
   readonly worktreeBranches: ReadonlyMap<string, string>;
+  readonly agentBranches: ReadonlySet<string>;
   readonly selected: boolean;
   readonly expanded: boolean;
   readonly onSelect: (sha: string) => void;
@@ -282,13 +356,17 @@ const CommitRow = memo(function CommitRow(props: {
   const { commit } = props;
   const chips = parseRefs(commit.refs, props.remoteNames);
   return (
-    <button
+    <TooltipPrimitive.Trigger
+      handle={props.tooltip}
+      payload={commit}
+      delay={COMMIT_TOOLTIP_DELAY_MS}
       type="button"
       aria-expanded={props.expanded}
       aria-pressed={props.selected}
       onClick={() => props.onSelect(commit.sha)}
       className={cn(
         "flex h-6.5 w-full min-w-0 items-center gap-1.5 pr-3 text-left text-sm [contain-intrinsic-size:auto_26px] [content-visibility:auto] hover:bg-accent/60",
+        props.expanded && "bg-accent/30",
         props.selected && "bg-accent hover:bg-accent",
       )}
     >
@@ -313,12 +391,16 @@ const CommitRow = memo(function CommitRow(props: {
         />
       ) : null}
       {chips.length > 0 ? (
-        <RefChips chips={chips} worktreeBranches={props.worktreeBranches} />
+        <RefChips
+          chips={chips}
+          worktreeBranches={props.worktreeBranches}
+          agentBranches={props.agentBranches}
+        />
       ) : null}
-      <span className="ml-auto shrink-0 pl-2 text-muted-foreground text-xs">
-        {relativeFromUnix(commit.authoredAt)}
+      <span className="ml-auto min-w-8 shrink-0 pl-2 text-right text-muted-foreground/70 text-xs tabular-nums">
+        {shortRelativeFromUnix(commit.authoredAt)}
       </span>
-    </button>
+    </TooltipPrimitive.Trigger>
   );
 });
 

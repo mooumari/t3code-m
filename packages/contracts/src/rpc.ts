@@ -87,6 +87,8 @@ import {
 import {
   GitDashboardCommitDetails,
   GitDashboardCommitInput,
+  GitDashboardComparison,
+  GitDashboardComparisonInput,
   GitDashboardError,
   GitDashboardFileDiffInput,
   GitDashboardFileDiffResult,
@@ -347,6 +349,7 @@ export const WS_METHODS = {
   gitDashboardGetFileDiff: "gitDashboard.getFileDiff",
   gitDashboardGetGraph: "gitDashboard.getGraph",
   gitDashboardGetCommit: "gitDashboard.getCommit",
+  gitDashboardGetComparison: "gitDashboard.getComparison",
 
   // Translation methods (fork: translate a message with the text generation model)
   translationTranslateMessage: "translation.translateMessage",
@@ -1148,6 +1151,12 @@ const WsGitDashboardGetCommitRpc = Rpc.make(WS_METHODS.gitDashboardGetCommit, {
   error: Schema.Union([GitDashboardError, EnvironmentAuthorizationError]),
 });
 
+const WsGitDashboardGetComparisonRpc = Rpc.make(WS_METHODS.gitDashboardGetComparison, {
+  payload: GitDashboardComparisonInput,
+  success: GitDashboardComparison,
+  error: Schema.Union([GitDashboardError, EnvironmentAuthorizationError]),
+});
+
 const WsTranslationTranslateMessageRpc = Rpc.make(WS_METHODS.translationTranslateMessage, {
   payload: TranslateMessageInput,
   success: TranslateMessageResult,
@@ -1542,6 +1551,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsGitDashboardGetFileDiffRpc,
   WsGitDashboardGetGraphRpc,
   WsGitDashboardGetCommitRpc,
+  WsGitDashboardGetComparisonRpc,
   WsTranslationTranslateMessageRpc,
   WsTerminalOpenRpc,
   WsTerminalAttachRpc,

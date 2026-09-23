@@ -36,5 +36,12 @@ export function createGitDashboardEnvironmentAtoms<R, E>(
       staleTimeMs: 10 * 60_000,
       idleTtlMs: 60_000,
     }),
+    // Branch review; refreshed with the graph when history changes.
+    comparison: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:git-dashboard:comparison",
+      tag: WS_METHODS.gitDashboardGetComparison,
+      staleTimeMs: 2_000,
+      idleTtlMs: 30_000,
+    }),
   };
 }

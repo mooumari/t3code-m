@@ -7,6 +7,8 @@ import {
   GitCommandError,
   type GitDashboardCommitDetails,
   type GitDashboardCommitInput,
+  type GitDashboardComparison,
+  type GitDashboardComparisonInput,
   type GitDashboardFileDiffInput,
   type GitDashboardFileDiffResult,
   type GitDashboardGraphInput,
@@ -60,6 +62,9 @@ export class GitDashboardService extends Context.Service<
     readonly getCommit: (
       input: GitDashboardCommitInput,
     ) => Effect.Effect<GitDashboardCommitDetails, GitCommandError>;
+    readonly getComparison: (
+      input: GitDashboardComparisonInput,
+    ) => Effect.Effect<GitDashboardComparison, GitCommandError>;
   }
 >()("t3/gitDashboard/GitDashboardService") {}
 
@@ -75,8 +80,13 @@ const EMPTY_OVERVIEW: GitDashboardOverviewResult = {
   worktrees: [],
   branches: [],
   remoteBranches: [],
+  defaultBranch: null,
   stashes: [],
 };
+
+/** Branches work usually merges into, in the order to guess them when the remote names none. */
+const DEFAULT_BRANCH_GUESSES = ["origin/main", "origin/master", "main", "master"];
+const MAX_COMPARISON_COMMITS = 500;
 
 /** @public Service construction is part of the canonical Effect module API. */
 export const make = Effect.gen(function* () {
@@ -107,7 +117,7 @@ export const make = Effect.gen(function* () {
       return EMPTY_OVERVIEW;
     }
 
-    const [status, worktrees, branches, remoteBranches, stashes] = yield* Effect.all(
+    const [status, worktrees, branches, remoteBranches, stashes, originHead] = yield* Effect.all(
       [
         run("status", repoRoot, [
           "status",
@@ -126,6 +136,7 @@ export const make = Effect.gen(function* () {
           "refs/remotes",
         ]),
         run("stashes", repoRoot, ["stash", "list", `--format=${STASH_FORMAT}`]),
+        run("originHead", repoRoot, ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"]),
       ],
       { concurrency: "unbounded" },
     );
@@ -139,6 +150,18 @@ export const make = Effect.gen(function* () {
         exitCode: status.exitCode,
       });
     }
+
+    const parsedBranches = branches.exitCode === 0 ? parseBranchList(branches.stdout) : [];
+    const parsedRemoteBranches =
+      remoteBranches.exitCode === 0 ? parseRemoteBranchList(remoteBranches.stdout) : [];
+    const knownBranches = new Set([
+      ...parsedBranches.map((branch) => branch.name),
+      ...parsedRemoteBranches.map((branch) => branch.name),
+    ]);
+    const defaultBranch =
+      (originHead.exitCode === 0 && originHead.stdout.trim()) ||
+      DEFAULT_BRANCH_GUESSES.find((name) => knownBranches.has(name)) ||
+      null;
 
     const parsedStatus = parsePorcelainV2Status(status.stdout, {
       outputTruncated: status.stdoutTruncated,
@@ -156,9 +179,9 @@ export const make = Effect.gen(function* () {
       filesTruncated: parsedStatus.truncated,
       worktrees:
         worktrees.exitCode === 0 ? parseWorktreeList(worktrees.stdout, path.resolve(repoRoot)) : [],
-      branches: branches.exitCode === 0 ? parseBranchList(branches.stdout) : [],
-      remoteBranches:
-        remoteBranches.exitCode === 0 ? parseRemoteBranchList(remoteBranches.stdout) : [],
+      branches: parsedBranches,
+      remoteBranches: parsedRemoteBranches,
+      defaultBranch,
       stashes: stashes.exitCode === 0 ? parseStashList(stashes.stdout) : [],
     };
   });
@@ -274,6 +297,73 @@ export const make = Effect.gen(function* () {
     return { ...details, files: parsed.files, filesTruncated: parsed.truncated };
   });
 
+  const resolveCommit = (cwd: string, ref: string) =>
+    isSafeRefName(ref)
+      ? run("resolveRef", cwd, [
+          "rev-parse",
+          "--verify",
+          "--quiet",
+          "--end-of-options",
+          `${ref}^{commit}`,
+        ]).pipe(
+          Effect.flatMap((result) =>
+            result.exitCode === 0
+              ? Effect.succeed(result.stdout.trim())
+              : Effect.fail(commitError("resolveRef", cwd, `Unknown branch ${ref}.`)),
+          ),
+        )
+      : Effect.fail(commitError("resolveRef", cwd, "Branch names cannot start with '-'."));
+
+  const getComparison: GitDashboardService["Service"]["getComparison"] = Effect.fn(
+    "GitDashboardService.getComparison",
+  )(function* (input) {
+    const [baseSha, headSha] = yield* Effect.all(
+      [resolveCommit(input.cwd, input.base), resolveCommit(input.cwd, input.head)],
+      { concurrency: "unbounded" },
+    );
+    const [log, behind, files] = yield* Effect.all(
+      [
+        run("comparisonLog", input.cwd, [
+          "log",
+          `-n${MAX_COMPARISON_COMMITS + 1}`,
+          `--format=${COMMIT_FORMAT}`,
+          `${baseSha}..${headSha}`,
+        ]),
+        run("comparisonBehind", input.cwd, ["rev-list", "--count", `${headSha}..${baseSha}`]),
+        // Three dots: from the merge base, so work that landed on the base is not shown as removed.
+        run("comparisonFiles", input.cwd, [
+          "diff",
+          "-M",
+          "--name-status",
+          "-z",
+          `${baseSha}...${headSha}`,
+        ]),
+      ],
+      { concurrency: "unbounded" },
+    );
+    if (log.exitCode !== 0 || files.exitCode !== 0) {
+      return yield* commitError(
+        "comparison",
+        input.cwd,
+        `Could not compare ${input.head} with ${input.base}.`,
+        log.exitCode || files.exitCode,
+      );
+    }
+    const commits = parseCommitLog(log.stdout);
+    const parsedFiles = parseNameStatus(files.stdout, MAX_COMMIT_FILES);
+    return {
+      base: input.base,
+      head: input.head,
+      baseSha,
+      headSha,
+      commits: commits.slice(0, MAX_COMPARISON_COMMITS),
+      commitsTruncated: commits.length > MAX_COMPARISON_COMMITS,
+      behindCount: behind.exitCode === 0 ? Number.parseInt(behind.stdout.trim(), 10) || 0 : 0,
+      files: parsedFiles.files,
+      filesTruncated: parsedFiles.truncated,
+    };
+  });
+
   const getFileDiff: GitDashboardService["Service"]["getFileDiff"] = Effect.fn(
     "GitDashboardService.getFileDiff",
   )(function* (input) {
@@ -289,7 +379,16 @@ export const make = Effect.gen(function* () {
 
     const baseArgs = ["diff", "--no-color", "--no-ext-diff"];
     let args: ReadonlyArray<string>;
-    if (input.area === "commit") {
+    if (input.area === "comparison") {
+      if (!input.sha || !input.baseSha) {
+        return yield* commitError(
+          "getFileDiff",
+          input.cwd,
+          "A comparison diff needs both commits.",
+        );
+      }
+      args = [...baseArgs, "-M", `${input.baseSha}...${input.sha}`, "--", ...paths];
+    } else if (input.area === "commit") {
       if (!input.sha) {
         return yield* new GitCommandError({
           operation: "GitDashboardService.getFileDiff",
@@ -327,7 +426,13 @@ export const make = Effect.gen(function* () {
     return { patch: result.stdout, truncated: result.stdoutTruncated };
   });
 
-  return GitDashboardService.of({ getOverview, getFileDiff, getGraph, getCommit });
+  return GitDashboardService.of({
+    getOverview,
+    getFileDiff,
+    getGraph,
+    getCommit,
+    getComparison,
+  });
 });
 
 export const layer = Layer.effect(GitDashboardService, make);
