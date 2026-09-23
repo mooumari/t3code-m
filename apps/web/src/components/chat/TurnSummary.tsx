@@ -1,4 +1,4 @@
-import type { ScopedThreadRef, TurnSummaryResult } from "@t3tools/contracts";
+import type { ScopedThreadRef, TurnId, TurnSummaryResult } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import { Atom } from "effect/unstable/reactivity";
 import { useAtomValue } from "@effect/atom-react";
@@ -12,6 +12,7 @@ import ChatMarkdown from "../ChatMarkdown";
 import { Button } from "../ui/button";
 import { Popover, PopoverPopup, PopoverTitle, PopoverTrigger } from "../ui/popover";
 import { Spinner } from "../ui/spinner";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { MessageCopyButton } from "./MessageCopyButton";
 
 interface TurnSummaryState {
@@ -22,17 +23,15 @@ interface TurnSummaryState {
 
 const EMPTY: TurnSummaryState = { result: null, pending: false, error: null };
 
-// Per thread and kept in memory, so it survives the working row remounting as the timeline
-// scrolls, and reopening shows the last summary instead of paying for a new one.
-const turnSummaryAtom = Atom.family((threadKey: string) =>
-  Atom.make<TurnSummaryState>(EMPTY).pipe(
-    Atom.keepAlive,
-    Atom.withLabel(`turn-summary:${threadKey}`),
-  ),
+// Per run (the current one, or a finished one by id) and kept in memory, so it survives rows
+// remounting as the timeline scrolls, and reopening shows the last summary instead of paying
+// for a new one.
+const turnSummaryAtom = Atom.family((runKey: string) =>
+  Atom.make<TurnSummaryState>(EMPTY).pipe(Atom.keepAlive, Atom.withLabel(`turn-summary:${runKey}`)),
 );
 
-const update = (threadKey: string, next: (current: TurnSummaryState) => TurnSummaryState) => {
-  const atom = turnSummaryAtom(threadKey);
+const update = (runKey: string, next: (current: TurnSummaryState) => TurnSummaryState) => {
+  const atom = turnSummaryAtom(runKey);
   appAtomRegistry.set(atom, next(appAtomRegistry.get(atom)));
 };
 
@@ -47,37 +46,44 @@ const timeOf = (iso: string) =>
   new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
 /**
- * "Catch me up" on the working row: a small model reads what the agent has done in this run
- * and says where it stands. The agent itself is never interrupted or told.
+ * "Catch me up": a small model reads what the agent did in a run and says where it stands. The
+ * agent itself is never interrupted or told. On the working row it covers the run in progress
+ * (`runStartedAt`); on a finished reply it covers that reply's run (`turnId`).
  */
 export function TurnSummaryButton(props: {
   readonly threadRef: ScopedThreadRef;
-  /** When the current run started; a summary from before it belongs to an older run. */
-  readonly runStartedAt: string | null;
   readonly cwd: string | undefined;
+  /** A finished run to recap. Without it, the thread's current run. */
+  readonly turnId?: TurnId | undefined;
+  /** When the current run started; a summary from before it belongs to an older run. */
+  readonly runStartedAt?: string | null | undefined;
 }) {
-  const threadKey = `${props.threadRef.environmentId}:${props.threadRef.threadId}`;
-  const state = useAtomValue(turnSummaryAtom(threadKey));
+  const { turnId, runStartedAt = null } = props;
+  const runKey = `${props.threadRef.environmentId}:${props.threadRef.threadId}:${turnId ?? "current"}`;
+  const state = useAtomValue(turnSummaryAtom(runKey));
   const [open, setOpen] = useState(false);
   const summarize = useAtomCommand(turnSummaryEnvironment.summarize, { reportFailure: false });
 
   const run = async () => {
-    if (appAtomRegistry.get(turnSummaryAtom(threadKey)).pending) return;
-    update(threadKey, (current) => ({ ...current, pending: true, error: null }));
+    if (appAtomRegistry.get(turnSummaryAtom(runKey)).pending) return;
+    update(runKey, (current) => ({ ...current, pending: true, error: null }));
     const result = await summarize({
       environmentId: props.threadRef.environmentId,
-      input: { threadId: props.threadRef.threadId },
+      input: { threadId: props.threadRef.threadId, ...(turnId ? { turnId } : {}) },
     });
-    update(threadKey, (current) =>
+    update(runKey, (current) =>
       result._tag === "Success"
         ? { result: result.value, pending: false, error: null }
         : { ...current, pending: false, error: describeFailure(result.cause) },
     );
   };
 
+  // A finished run's recap only goes stale if it was written while the run was still going.
   const isStale =
     state.result === null ||
-    (props.runStartedAt !== null && state.result.generatedAt < props.runStartedAt);
+    (turnId
+      ? state.result.turnState === "running"
+      : runStartedAt !== null && state.result.generatedAt < runStartedAt);
 
   return (
     <Popover
@@ -87,16 +93,37 @@ export function TurnSummaryButton(props: {
         if (next && isStale) void run();
       }}
     >
-      <PopoverTrigger
-        render={<Button type="button" size="xs" variant="ghost-muted" aria-label="Catch me up" />}
-      >
-        <NotebookTextIcon aria-hidden />
-        Catch me up
-      </PopoverTrigger>
-      <PopoverPopup side="bottom" align="start" width="lg">
+      {turnId ? (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <PopoverTrigger
+                render={
+                  <Button type="button" size="xs" variant="ghost" aria-label="Recap this run" />
+                }
+              />
+            }
+          >
+            <NotebookTextIcon className="size-3" />
+          </TooltipTrigger>
+          <TooltipPopup>
+            <p>Recap this run</p>
+          </TooltipPopup>
+        </Tooltip>
+      ) : (
+        <PopoverTrigger
+          render={<Button type="button" size="xs" variant="ghost-muted" aria-label="Catch me up" />}
+        >
+          <NotebookTextIcon aria-hidden />
+          Catch me up
+        </PopoverTrigger>
+      )}
+      <PopoverPopup side={turnId ? "top" : "bottom"} align="start" width="lg">
         <div className="flex flex-col gap-2">
           <header className="flex items-center gap-2">
-            <PopoverTitle className="min-w-0 flex-1">What the agent is doing</PopoverTitle>
+            <PopoverTitle className="min-w-0 flex-1">
+              {turnId ? "What the agent did" : "What the agent is doing"}
+            </PopoverTitle>
             {state.result && !isStale ? (
               <span className="shrink-0 text-muted-foreground text-xs">
                 as of {timeOf(state.result.generatedAt)}
@@ -132,8 +159,8 @@ export function TurnSummaryButton(props: {
             </div>
           ) : null}
           <p className="text-muted-foreground/70 text-xs">
-            Written by your text generation model from this run's messages and steps. The agent
-            isn't interrupted.
+            Written by your text generation model from this run's messages and steps.
+            {turnId ? null : " The agent isn't interrupted."}
           </p>
         </div>
       </PopoverPopup>
