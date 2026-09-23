@@ -105,6 +105,7 @@ import {
   TranslateMessageInput,
   TranslateMessageResult,
 } from "./translation.ts";
+import { TurnSummaryError, TurnSummaryInput, TurnSummaryResult } from "./turnSummary.ts";
 import { KeybindingsConfigError } from "./keybindings.ts";
 import {
   ClientOrchestrationCommand,
@@ -358,6 +359,7 @@ export const WS_METHODS = {
 
   // Translation methods (fork: translate a message with the text generation model)
   translationTranslateMessage: "translation.translateMessage",
+  turnSummarySummarize: "turnSummary.summarize",
 
   // Terminal methods
   terminalOpen: "terminal.open",
@@ -1179,6 +1181,12 @@ const WsTranslationTranslateMessageRpc = Rpc.make(WS_METHODS.translationTranslat
   error: Schema.Union([TranslateMessageError, EnvironmentAuthorizationError]),
 });
 
+const WsTurnSummarySummarizeRpc = Rpc.make(WS_METHODS.turnSummarySummarize, {
+  payload: TurnSummaryInput,
+  success: TurnSummaryResult,
+  error: Schema.Union([TurnSummaryError, EnvironmentAuthorizationError]),
+});
+
 const WsTerminalOpenRpc = Rpc.make(WS_METHODS.terminalOpen, {
   payload: TerminalOpenInput,
   success: TerminalSessionSnapshot,
@@ -1571,6 +1579,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsGitDashboardGetComparisonRpc,
   WsGitDashboardSetStagedRpc,
   WsTranslationTranslateMessageRpc,
+  WsTurnSummarySummarizeRpc,
   WsTerminalOpenRpc,
   WsTerminalAttachRpc,
   WsTerminalWriteRpc,
