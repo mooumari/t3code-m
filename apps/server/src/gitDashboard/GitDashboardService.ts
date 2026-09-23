@@ -15,6 +15,7 @@ import {
   type GitDashboardGraphResult,
   type GitDashboardOverviewInput,
   type GitDashboardOverviewResult,
+  type GitDashboardSetStagedInput,
 } from "@t3tools/contracts";
 
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
@@ -23,7 +24,6 @@ import {
   COMMIT_DETAILS_FORMAT,
   COMMIT_FORMAT,
   REMOTE_BRANCH_FORMAT,
-  STASH_FORMAT,
   isSafeRefName,
   isSafeRepositoryRelativePath,
   parseBranchList,
@@ -32,7 +32,6 @@ import {
   parseNameStatus,
   parsePorcelainV2Status,
   parseRemoteBranchList,
-  parseStashList,
   parseWorktreeList,
 } from "./gitDashboardParsing.ts";
 
@@ -65,6 +64,8 @@ export class GitDashboardService extends Context.Service<
     readonly getComparison: (
       input: GitDashboardComparisonInput,
     ) => Effect.Effect<GitDashboardComparison, GitCommandError>;
+    /** The one write: stage or unstage files, like VS Code's + and − buttons. */
+    readonly setStaged: (input: GitDashboardSetStagedInput) => Effect.Effect<void, GitCommandError>;
   }
 >()("t3/gitDashboard/GitDashboardService") {}
 
@@ -81,7 +82,6 @@ const EMPTY_OVERVIEW: GitDashboardOverviewResult = {
   branches: [],
   remoteBranches: [],
   defaultBranch: null,
-  stashes: [],
 };
 
 /** Branches work usually merges into, in the order to guess them when the remote names none. */
@@ -117,7 +117,7 @@ export const make = Effect.gen(function* () {
       return EMPTY_OVERVIEW;
     }
 
-    const [status, worktrees, branches, remoteBranches, stashes, originHead] = yield* Effect.all(
+    const [status, worktrees, branches, remoteBranches, originHead] = yield* Effect.all(
       [
         run("status", repoRoot, [
           "status",
@@ -135,7 +135,6 @@ export const make = Effect.gen(function* () {
           "--sort=-committerdate",
           "refs/remotes",
         ]),
-        run("stashes", repoRoot, ["stash", "list", `--format=${STASH_FORMAT}`]),
         run("originHead", repoRoot, ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"]),
       ],
       { concurrency: "unbounded" },
@@ -182,7 +181,6 @@ export const make = Effect.gen(function* () {
       branches: parsedBranches,
       remoteBranches: parsedRemoteBranches,
       defaultBranch,
-      stashes: stashes.exitCode === 0 ? parseStashList(stashes.stdout) : [],
     };
   });
 
@@ -426,12 +424,42 @@ export const make = Effect.gen(function* () {
     return { patch: result.stdout, truncated: result.stdoutTruncated };
   });
 
+  const setStaged: GitDashboardService["Service"]["setStaged"] = Effect.fn(
+    "GitDashboardService.setStaged",
+  )(function* (input) {
+    const paths = input.paths ?? [];
+    if (!paths.every(isSafeRepositoryRelativePath)) {
+      return yield* commitError("setStaged", input.cwd, "Invalid file path.");
+    }
+    const pathArgs = paths.length > 0 ? ["--", ...paths] : [];
+    // `add -A` also stages deletions; `reset` unstages without touching the working copy.
+    const args = input.staged
+      ? ["--literal-pathspecs", "add", "-A", ...pathArgs]
+      : ["--literal-pathspecs", "reset", "-q", ...pathArgs];
+    const result = yield* git.execute({
+      operation: "GitDashboardService.setStaged",
+      cwd: input.cwd,
+      args,
+      env: { LC_ALL: "C" },
+      allowNonZeroExit: true,
+    });
+    if (result.exitCode !== 0) {
+      return yield* commitError(
+        "setStaged",
+        input.cwd,
+        result.stderr.trim() || (input.staged ? "git add failed." : "git reset failed."),
+        result.exitCode,
+      );
+    }
+  });
+
   return GitDashboardService.of({
     getOverview,
     getFileDiff,
     getGraph,
     getCommit,
     getComparison,
+    setStaged,
   });
 });
 

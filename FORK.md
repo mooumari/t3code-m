@@ -43,24 +43,26 @@ Code: `apps/web/src/components/chat/MessageTranslation.tsx`, `messageTranslation
 
 **Git page** (`/git`, route in `apps/web/src/routes/_chat.git.tsx`). It works like VS Code's Source Control:
 
-- changes,
+- resizable sections (drag the dividers),
+- changes with language icons, and + / − to stage and unstage (per file or all). When anything is staged, Commit commits only the staged files,
 - a commit graph with lanes, branch labels and push/pull arrows,
 - commit details and diffs,
 - a branch and worktree picker,
-- a list of worktrees with the T3 threads working in each,
+- a Worktrees section (only when the repo has more than one) with the active T3 threads in each; idle ones are just counted,
 - branch review (a branch compared with `main`: its commits, files and diffs),
 - a commit box (an empty message is written by AI) and Sync.
 
 **Git tab in every thread** (right panel, shortcut `G`). The same view, scoped to the thread's worktree:
 
 - only Changes and Graph, with a draggable split,
+- a label next to the branch, "Main checkout" or "Worktree · <folder>", saying which checkout the thread works in (hover for the path, click to copy),
 - commits expand in place,
 - the full commit message on hover.
 
 Git code:
 
 - Web: `apps/web/src/components/gitDashboard/`. `GitDashboardView.tsx` is the entry point, and its `compact` prop gives the thread-tab layout.
-- Server: `apps/server/src/gitDashboard/`. It is read-only git. Commit and Sync reuse T3's existing `git.runStackedAction` and `vcs.pull`.
+- Server: `apps/server/src/gitDashboard/`. Read-only git except `setStaged` (`git add` / `git reset`). Commit and Sync reuse T3's existing `git.runStackedAction` (its `filePaths` commits only the staged files) and `vcs.pull`.
 - Contracts: `packages/contracts/src/gitDashboard.ts`.
 
 ## Official files the fork changes
@@ -85,6 +87,7 @@ These are the only places an update can conflict:
 
 ## Ideas not done yet
 
-- Choose which files to commit. Needs a server change, because the commit action currently stages everything.
+- Staging part of a file (hunks). A partly staged file is committed whole.
+- Discard changes (VS Code's ↶ button). Left out on purpose because it destroys work.
 - A lighter AI commit-message input: a smaller diff cutoff, and skipping lockfiles and generated files.
 - Mobile versions of Translate and Git.

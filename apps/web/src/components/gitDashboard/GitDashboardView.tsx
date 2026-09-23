@@ -1,30 +1,38 @@
+import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import type {
   EnvironmentId,
   GitDashboardDiffArea,
   GitDashboardFile,
   GitDashboardOverviewResult,
 } from "@t3tools/contracts";
-import { GitBranchIcon } from "lucide-react";
+import { GitBranchIcon, MinusIcon, PlusIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
 import { gitDashboardEnvironment } from "~/state/gitDashboard";
 import { useEnvironmentQuery } from "~/state/query";
+import { useAtomCommand } from "~/state/use-atom-command";
 import { vcsEnvironment } from "~/state/vcs";
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
 import { Button } from "../ui/button";
-import { MiddleTruncate } from "../ui/middle-truncate";
 import { Spinner } from "../ui/spinner";
+import { toastManager } from "../ui/toast";
 import { useWorktreeThreads, WorktreeList } from "./GitAgents";
 import { GitBranchReview, type BranchReview } from "./GitBranchReview";
+import { GitCheckoutLabel } from "./GitCheckoutLabel";
 import { GitCommitBox } from "./GitCommitBox";
-import { GitSplitPanes } from "./GitSplitPanes";
+import { GitSplitPanes, type GitSplitPane } from "./GitSplitPanes";
 import { AheadBehind, FileRow, PaneSection } from "./gitDashboardShared";
 import { GitDetailsPane, type DetailSelection } from "./GitDetailsPane";
 import { GitGraph } from "./GitGraph";
 import { GraphScopePicker, WorktreePicker, type GraphScope } from "./GitRefPickers";
 
 const GRAPH_PAGE_SIZE = 100;
+
+const describeFailure = (result: Parameters<typeof squashAtomCommandFailure>[0]) => {
+  const error = squashAtomCommandFailure(result);
+  return error instanceof Error ? error.message : "An error occurred.";
+};
 
 const WORKING_TREE_GROUPS: ReadonlyArray<{
   readonly area: Exclude<GitDashboardDiffArea, "commit" | "comparison">;
@@ -93,6 +101,7 @@ export function GitDashboardView(props: {
       environmentId={environmentId}
       repoRoot={overview.repoRoot ?? cwd}
       overview={overview}
+      onChanged={refreshOverview}
       onSelectWorktree={props.onSelectWorktree}
       actions={props.actions}
       compact={props.compact ?? false}
@@ -104,6 +113,8 @@ function RepositoryView(props: {
   readonly environmentId: EnvironmentId;
   readonly repoRoot: string;
   readonly overview: GitDashboardOverviewResult;
+  /** Called after the dashboard itself changes the repository, such as staging a file. */
+  readonly onChanged: () => void;
   readonly onSelectWorktree: (path: string) => void;
   readonly actions?: ReactNode;
   readonly compact: boolean;
@@ -145,7 +156,6 @@ function RepositoryView(props: {
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
   const [open, setOpen] = useState({
     changes: true,
-    stashes: false,
     worktrees: true,
     graph: true,
   });
@@ -165,10 +175,6 @@ function RepositoryView(props: {
   const workingThreadCount = (worktreeThreads.byWorktree.get(currentWorktreePath) ?? []).filter(
     (thread) => thread.status === "working",
   ).length;
-  const threadCount = [...worktreeThreads.byWorktree.values()].reduce(
-    (total, threads) => total + threads.length,
-    0,
-  );
 
   // A working-tree selection is dropped once its file leaves that group (committed, reverted…).
   const visibleSelection =
@@ -215,8 +221,49 @@ function RepositoryView(props: {
     [overview.worktrees],
   );
 
+  const setStagedCommand = useAtomCommand(gitDashboardEnvironment.setStaged, {
+    reportFailure: false,
+  });
+  const onChanged = props.onChanged;
+  // No files means every change. A rename needs both paths to move as one.
+  const setStaged = async (staged: boolean, files?: ReadonlyArray<GitDashboardFile>) => {
+    const paths = files?.flatMap((file) =>
+      file.previousPath ? [file.path, file.previousPath] : [file.path],
+    );
+    const result = await setStagedCommand({
+      environmentId,
+      input: { cwd: repoRoot, staged, ...(paths ? { paths } : {}) },
+    });
+    onChanged();
+    if (result._tag === "Failure") {
+      toastManager.add({
+        type: "error",
+        title: staged ? "Couldn't stage" : "Couldn't unstage",
+        description: describeFailure(result),
+      });
+    }
+  };
+  const stageButton = (staged: boolean, label: string, files?: ReadonlyArray<GitDashboardFile>) => (
+    <Button
+      type="button"
+      size="icon-xs"
+      variant="ghost"
+      aria-label={label}
+      onClick={() => void setStaged(staged, files)}
+    >
+      {staged ? <PlusIcon aria-hidden /> : <MinusIcon aria-hidden />}
+    </Button>
+  );
+
   const groups = WORKING_TREE_GROUPS.filter((group) => overview[group.area].length > 0);
   const changeCount = groups.reduce((total, group) => total + overview[group.area].length, 0);
+  const stagedPaths = useMemo(
+    () =>
+      overview.staged.flatMap((file) =>
+        file.previousPath ? [file.path, file.previousPath] : [file.path],
+      ),
+    [overview.staged],
+  );
   const graphSelection =
     visibleSelection?.kind === "commit"
       ? { sha: visibleSelection.sha, path: null }
@@ -234,7 +281,7 @@ function RepositoryView(props: {
     <PaneSection
       title="Changes"
       {...(changeCount > 0 ? { count: changeCount } : { note: "clean" })}
-      fill={compact}
+      fill
       open={open.changes}
       onOpenChange={(changes) => setOpen((previous) => ({ ...previous, changes }))}
     >
@@ -244,6 +291,8 @@ function RepositoryView(props: {
         branch={head?.detached ? null : (head?.branch ?? null)}
         hasUpstream={head?.upstream != null}
         changeCount={changeCount}
+        stagedPaths={stagedPaths}
+        stagedFileCount={overview.staged.length}
         aheadCount={head?.aheadCount ?? 0}
         behindCount={head?.behindCount ?? 0}
         workingThreadCount={workingThreadCount}
@@ -252,15 +301,27 @@ function RepositoryView(props: {
         <div className="flex flex-col pb-2">
           {groups.map((group) => (
             <div key={group.area} className="flex flex-col">
-              {groups.length > 1 ? (
-                <div className="px-6 pt-1 pb-0.5 text-muted-foreground text-xs">
+              <div className="flex h-6 items-center gap-1 pr-3 pl-6 text-muted-foreground text-xs">
+                <span className="min-w-0 flex-1 truncate">
                   {group.label} · {overview[group.area].length}
-                </div>
-              ) : null}
+                </span>
+                {group.area === "staged"
+                  ? stageButton(false, "Unstage all")
+                  : stageButton(
+                      true,
+                      `Stage all ${group.label.toLowerCase()}`,
+                      overview[group.area],
+                    )}
+              </div>
               {overview[group.area].map((file) => (
                 <FileRow
                   key={file.path}
                   file={file}
+                  actions={
+                    group.area === "staged"
+                      ? stageButton(false, `Unstage ${file.path}`, [file])
+                      : stageButton(true, `Stage ${file.path}`, [file])
+                  }
                   selected={
                     visibleSelection?.kind === "working-file" &&
                     visibleSelection.area === group.area &&
@@ -290,7 +351,7 @@ function RepositoryView(props: {
   const graphSection = (
     <PaneSection
       title="Graph"
-      fill={compact}
+      fill
       open={open.graph}
       onOpenChange={(graphOpen) => setOpen((previous) => ({ ...previous, graph: graphOpen }))}
       actions={
@@ -331,6 +392,49 @@ function RepositoryView(props: {
     </PaneSection>
   );
 
+  const panes: GitSplitPane[] = [
+    {
+      id: "changes",
+      label: "changes",
+      open: open.changes,
+      defaultWeight: compact ? 7 : 4,
+      node: changesSection,
+    },
+  ];
+  // Only worth the space once agents work in separate checkouts.
+  if (!compact && overview.worktrees.length > 1) {
+    panes.push({
+      id: "worktrees",
+      label: "worktrees",
+      open: open.worktrees,
+      defaultWeight: 2,
+      node: (
+        <PaneSection
+          fill
+          title="Worktrees"
+          count={overview.worktrees.length}
+          open={open.worktrees}
+          onOpenChange={(worktrees) => setOpen((previous) => ({ ...previous, worktrees }))}
+        >
+          <WorktreeList
+            worktrees={overview.worktrees}
+            threadsByWorktree={worktreeThreads.byWorktree}
+            defaultBranch={overview.defaultBranch}
+            onSelectWorktree={props.onSelectWorktree}
+            onReview={startReview}
+          />
+        </PaneSection>
+      ),
+    });
+  }
+  panes.push({
+    id: "graph",
+    label: "graph",
+    open: open.graph,
+    defaultWeight: compact ? 3 : 4,
+    node: graphSection,
+  });
+
   // Side by side when wide; when narrow (a thread's panel), the lists and the details take turns.
   return (
     <div className="flex min-h-0 flex-1 flex-col @3xl/git:flex-row">
@@ -357,9 +461,10 @@ function RepositoryView(props: {
             <AheadBehind ahead={head?.aheadCount ?? 0} behind={head?.behindCount ?? 0} />
           </span>
           <span className="ml-auto flex min-w-0 max-w-full items-center gap-1">
-            <span className="min-w-0 px-2 font-mono text-muted-foreground text-xs @max-3xl/git:hidden">
-              <MiddleTruncate value={repoRoot} />
-            </span>
+            <GitCheckoutLabel
+              worktree={overview.worktrees.find((worktree) => worktree.isCurrent)}
+              path={repoRoot}
+            />
             {head?.branch && !review ? (
               <Button
                 type="button"
@@ -406,53 +511,11 @@ function RepositoryView(props: {
               })
             }
           />
-        ) : compact ? (
-          <GitSplitPanes
-            top={changesSection}
-            bottom={graphSection}
-            topOpen={open.changes}
-            bottomOpen={open.graph}
-          />
         ) : (
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            {changesSection}
-            {!compact && overview.stashes.length > 0 ? (
-              <PaneSection
-                title="Stashes"
-                count={overview.stashes.length}
-                open={open.stashes}
-                onOpenChange={(stashes) => setOpen((previous) => ({ ...previous, stashes }))}
-              >
-                <ul className="flex flex-col pb-2">
-                  {overview.stashes.map((stash) => (
-                    <li key={stash.ref} className="flex h-6.5 items-center gap-2 px-6 text-sm">
-                      <span className="shrink-0 font-mono text-muted-foreground text-xs">
-                        {stash.ref}
-                      </span>
-                      <span className="min-w-0 truncate">{stash.subject}</span>
-                    </li>
-                  ))}
-                </ul>
-              </PaneSection>
-            ) : null}
-            {!compact && (overview.worktrees.length > 1 || threadCount > 0) ? (
-              <PaneSection
-                title="Worktrees & threads"
-                count={threadCount}
-                open={open.worktrees}
-                onOpenChange={(worktrees) => setOpen((previous) => ({ ...previous, worktrees }))}
-              >
-                <WorktreeList
-                  worktrees={overview.worktrees}
-                  threadsByWorktree={worktreeThreads.byWorktree}
-                  defaultBranch={overview.defaultBranch}
-                  onSelectWorktree={props.onSelectWorktree}
-                  onReview={startReview}
-                />
-              </PaneSection>
-            ) : null}
-            {graphSection}
-          </div>
+          <GitSplitPanes
+            storageKey={compact ? "t3code:git-panel:pane-weights" : "t3code:git-page:pane-weights"}
+            panes={panes}
+          />
         )}
       </div>
       <div

@@ -184,6 +184,43 @@ describe("GitDashboardService", () => {
     }).pipe(Effect.provide(TestLayer)),
   );
 
+  it.effect("stages and unstages chosen files or every change", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const cwd = yield* makeRepo;
+      const dashboard = yield* GitDashboardService.GitDashboardService;
+
+      yield* fs.writeFileString(path.join(cwd, "README.md"), "# edited\n");
+      yield* fs.writeFileString(path.join(cwd, "fresh file.ts"), "export {};\n");
+      yield* fs.remove(path.join(cwd, "old name.txt"));
+      const staged = () =>
+        dashboard
+          .getOverview({ cwd })
+          .pipe(Effect.map((overview) => overview.staged.map((file) => file.path)));
+
+      yield* dashboard.setStaged({ cwd, paths: ["fresh file.ts", "old name.txt"], staged: true });
+      assert.deepStrictEqual(yield* staged(), ["fresh file.ts", "old name.txt"]);
+
+      yield* dashboard.setStaged({ cwd, paths: ["fresh file.ts"], staged: false });
+      assert.deepStrictEqual(yield* staged(), ["old name.txt"]);
+
+      yield* dashboard.setStaged({ cwd, staged: true });
+      assert.deepStrictEqual(yield* staged(), ["README.md", "fresh file.ts", "old name.txt"]);
+
+      yield* dashboard.setStaged({ cwd, staged: false });
+      assert.deepStrictEqual(yield* staged(), []);
+      const overview = yield* dashboard.getOverview({ cwd });
+      assert.strictEqual(overview.unstaged.length, 2);
+      assert.strictEqual(overview.untracked.length, 1);
+
+      const outside = yield* dashboard
+        .setStaged({ cwd, paths: ["../elsewhere"], staged: true })
+        .pipe(Effect.flip);
+      assert.strictEqual(outside.detail, "Invalid file path.");
+    }).pipe(Effect.provide(TestLayer)),
+  );
+
   it.effect("compares a branch with its base from the merge base", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
