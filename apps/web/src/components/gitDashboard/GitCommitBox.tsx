@@ -43,6 +43,9 @@ export function GitCommitBox(props: {
   readonly branch: string | null;
   readonly hasUpstream: boolean;
   readonly changeCount: number;
+  /** When any files are staged, only they are committed, as in VS Code. */
+  readonly stagedPaths: ReadonlyArray<string>;
+  readonly stagedFileCount: number;
   readonly aheadCount: number;
   readonly behindCount: number;
   /** Threads whose agent is working in this checkout right now. */
@@ -66,7 +69,11 @@ export function GitCommitBox(props: {
     return confirmation === undefined ? true : await confirmation;
   };
 
-  const runStacked = async (action: GitStackedAction, commitMessage?: string) => {
+  const runStacked = async (
+    action: GitStackedAction,
+    commitMessage?: string,
+    filePaths?: ReadonlyArray<string>,
+  ) => {
     const toastId = toastManager.add({
       type: "loading",
       title: action === "push" ? "Pushing…" : "Committing…",
@@ -81,6 +88,7 @@ export function GitCommitBox(props: {
       actionId: randomUUID(),
       action,
       ...(commitMessage ? { commitMessage } : {}),
+      ...(filePaths?.length ? { filePaths: [...filePaths] } : {}),
       onProgress,
     });
     if (result._tag === "Failure") {
@@ -104,7 +112,13 @@ export function GitCommitBox(props: {
   const commit = async (push: boolean) => {
     if (!(await confirmWhileAgentWorks())) return;
     const trimmed = message.trim();
-    if (await runStacked(push ? "commit_push" : "commit", trimmed || undefined)) setMessage("");
+    // The server re-adds these files whole, so a partly staged file commits all its changes.
+    const committed = await runStacked(
+      push ? "commit_push" : "commit",
+      trimmed || undefined,
+      props.stagedPaths,
+    );
+    if (committed) setMessage("");
   };
 
   const sync = async () => {
@@ -128,6 +142,8 @@ export function GitCommitBox(props: {
   };
 
   const canCommit = props.changeCount > 0;
+  const commitsOnlyStaged =
+    props.stagedPaths.length > 0 && props.changeCount > props.stagedFileCount;
   const canSync =
     !canCommit &&
     props.branch !== null &&
@@ -159,7 +175,7 @@ export function GitCommitBox(props: {
             onClick={() => void commit(false)}
           >
             <CheckIcon aria-hidden />
-            Commit
+            {commitsOnlyStaged ? "Commit staged" : "Commit"}
           </Button>
           <GroupSeparator />
           <Menu>

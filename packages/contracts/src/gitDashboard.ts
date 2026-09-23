@@ -201,6 +201,21 @@ export const GitDashboardCommitDetails = Schema.Struct({
 export type GitDashboardCommitDetails = typeof GitDashboardCommitDetails.Type;
 
 // ---------------------------------------------------------------------------
+// Staging
+// ---------------------------------------------------------------------------
+
+export const GitDashboardSetStagedInput = Schema.Struct({
+  /** Repository root returned by the overview; file paths are relative to it. */
+  cwd: TrimmedNonEmptyString,
+  /** Files to stage or unstage. Omitted means every change. */
+  paths: Schema.optionalKey(
+    Schema.Array(TrimmedNonEmptyString).check(Schema.isMinLength(1), Schema.isMaxLength(2_000)),
+  ),
+  staged: Schema.Boolean,
+});
+export type GitDashboardSetStagedInput = typeof GitDashboardSetStagedInput.Type;
+
+// ---------------------------------------------------------------------------
 // Branch review
 // ---------------------------------------------------------------------------
 

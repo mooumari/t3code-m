@@ -2,7 +2,7 @@ import { WS_METHODS } from "@t3tools/contracts";
 import { Atom } from "effect/unstable/reactivity";
 
 import type { EnvironmentRegistry } from "../connection/registry.ts";
-import { createEnvironmentRpcQueryAtomFamily } from "./runtime.ts";
+import { createEnvironmentRpcCommand, createEnvironmentRpcQueryAtomFamily } from "./runtime.ts";
 
 export function createGitDashboardEnvironmentAtoms<R, E>(
   runtime: Atom.AtomRuntime<EnvironmentRegistry | R, E>,
@@ -42,6 +42,10 @@ export function createGitDashboardEnvironmentAtoms<R, E>(
       tag: WS_METHODS.gitDashboardGetComparison,
       staleTimeMs: 2_000,
       idleTtlMs: 30_000,
+    }),
+    setStaged: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:git-dashboard:set-staged",
+      tag: WS_METHODS.gitDashboardSetStaged,
     }),
   };
 }

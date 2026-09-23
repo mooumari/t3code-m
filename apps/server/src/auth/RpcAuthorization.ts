@@ -141,6 +141,7 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.gitDashboardGetGraph]: AuthOrchestrationReadScope,
   [WS_METHODS.gitDashboardGetCommit]: AuthOrchestrationReadScope,
   [WS_METHODS.gitDashboardGetComparison]: AuthOrchestrationReadScope,
+  [WS_METHODS.gitDashboardSetStaged]: AuthOrchestrationOperateScope,
   [WS_METHODS.translationTranslateMessage]: AuthOrchestrationOperateScope,
   [WS_METHODS.terminalOpen]: AuthTerminalOperateScope,
   [WS_METHODS.terminalAttach]: AuthTerminalOperateScope,

@@ -2,7 +2,9 @@ import type { GitDashboardFile, GitDashboardFileChange } from "@t3tools/contract
 import { ArrowDownIcon, ArrowUpIcon, ChevronDownIcon, ChevronRightIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
+import { useTheme } from "~/hooks/useTheme";
 import { cn } from "~/lib/utils";
+import { PierreEntryIcon } from "../chat/PierreEntryIcon";
 import { formatRelativeTime, formatRelativeTimeLabel } from "~/timestampFormat";
 
 const CHANGE_LETTER: Record<GitDashboardFileChange, string> = {
@@ -117,24 +119,39 @@ export function FileRow(props: {
   readonly onSelect: () => void;
   /** Drawn before the name, such as graph lanes continuing past an open commit. */
   readonly leading?: ReactNode;
+  /** Buttons shown while the row is hovered or focused, such as stage and unstage. */
+  readonly actions?: ReactNode;
 }) {
   const { name, directory } = splitPath(props.file.path);
+  const { resolvedTheme } = useTheme();
   return (
-    <button
-      type="button"
-      aria-pressed={props.selected}
-      onClick={props.onSelect}
+    <div
       className={cn(
-        "flex h-6.5 w-full min-w-0 items-center gap-1.5 pr-3 text-left text-sm hover:bg-accent/60",
-        props.leading ? "pl-0" : "pl-6",
+        "group/file flex h-6.5 w-full min-w-0 items-center gap-1 pr-3 text-sm hover:bg-accent/60",
         props.selected && "bg-accent hover:bg-accent",
       )}
     >
-      {props.leading}
-      <span className="shrink-0 truncate">{name}</span>
-      <span className="min-w-0 flex-1 truncate text-muted-foreground text-xs">
-        {props.file.previousPath ? `${directory} ← ${props.file.previousPath}` : directory}
-      </span>
+      <button
+        type="button"
+        aria-pressed={props.selected}
+        onClick={props.onSelect}
+        className={cn(
+          "flex h-full min-w-0 flex-1 items-center gap-1.5 text-left outline-none",
+          props.leading ? "pl-0" : "pl-6",
+        )}
+      >
+        {props.leading}
+        <PierreEntryIcon pathValue={props.file.path} kind="file" theme={resolvedTheme} />
+        <span className="shrink-0 truncate">{name}</span>
+        <span className="min-w-0 flex-1 truncate text-muted-foreground text-xs">
+          {props.file.previousPath ? `${directory} ← ${props.file.previousPath}` : directory}
+        </span>
+      </button>
+      {props.actions ? (
+        <span className="hidden shrink-0 items-center group-focus-within/file:flex group-hover/file:flex">
+          {props.actions}
+        </span>
+      ) : null}
       <span
         aria-label={props.file.change}
         className={cn(
@@ -144,6 +161,6 @@ export function FileRow(props: {
       >
         {CHANGE_LETTER[props.file.change]}
       </span>
-    </button>
+    </div>
   );
 }

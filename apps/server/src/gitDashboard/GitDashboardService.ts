@@ -15,6 +15,7 @@ import {
   type GitDashboardGraphResult,
   type GitDashboardOverviewInput,
   type GitDashboardOverviewResult,
+  type GitDashboardSetStagedInput,
 } from "@t3tools/contracts";
 
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
@@ -65,6 +66,8 @@ export class GitDashboardService extends Context.Service<
     readonly getComparison: (
       input: GitDashboardComparisonInput,
     ) => Effect.Effect<GitDashboardComparison, GitCommandError>;
+    /** The one write: stage or unstage files, like VS Code's + and − buttons. */
+    readonly setStaged: (input: GitDashboardSetStagedInput) => Effect.Effect<void, GitCommandError>;
   }
 >()("t3/gitDashboard/GitDashboardService") {}
 
@@ -426,12 +429,42 @@ export const make = Effect.gen(function* () {
     return { patch: result.stdout, truncated: result.stdoutTruncated };
   });
 
+  const setStaged: GitDashboardService["Service"]["setStaged"] = Effect.fn(
+    "GitDashboardService.setStaged",
+  )(function* (input) {
+    const paths = input.paths ?? [];
+    if (!paths.every(isSafeRepositoryRelativePath)) {
+      return yield* commitError("setStaged", input.cwd, "Invalid file path.");
+    }
+    const pathArgs = paths.length > 0 ? ["--", ...paths] : [];
+    // `add -A` also stages deletions; `reset` unstages without touching the working copy.
+    const args = input.staged
+      ? ["--literal-pathspecs", "add", "-A", ...pathArgs]
+      : ["--literal-pathspecs", "reset", "-q", ...pathArgs];
+    const result = yield* git.execute({
+      operation: "GitDashboardService.setStaged",
+      cwd: input.cwd,
+      args,
+      env: { LC_ALL: "C" },
+      allowNonZeroExit: true,
+    });
+    if (result.exitCode !== 0) {
+      return yield* commitError(
+        "setStaged",
+        input.cwd,
+        result.stderr.trim() || (input.staged ? "git add failed." : "git reset failed."),
+        result.exitCode,
+      );
+    }
+  });
+
   return GitDashboardService.of({
     getOverview,
     getFileDiff,
     getGraph,
     getCommit,
     getComparison,
+    setStaged,
   });
 });
 

@@ -43,7 +43,8 @@ Code: `apps/web/src/components/chat/MessageTranslation.tsx`, `messageTranslation
 
 **Git page** (`/git`, route in `apps/web/src/routes/_chat.git.tsx`). It works like VS Code's Source Control:
 
-- changes,
+- resizable sections (drag the dividers),
+- changes with language icons, and + / − to stage and unstage (per file or all). When anything is staged, Commit commits only the staged files,
 - a commit graph with lanes, branch labels and push/pull arrows,
 - commit details and diffs,
 - a branch and worktree picker,
@@ -60,7 +61,7 @@ Code: `apps/web/src/components/chat/MessageTranslation.tsx`, `messageTranslation
 Git code:
 
 - Web: `apps/web/src/components/gitDashboard/`. `GitDashboardView.tsx` is the entry point, and its `compact` prop gives the thread-tab layout.
-- Server: `apps/server/src/gitDashboard/`. It is read-only git. Commit and Sync reuse T3's existing `git.runStackedAction` and `vcs.pull`.
+- Server: `apps/server/src/gitDashboard/`. Read-only git except `setStaged` (`git add` / `git reset`). Commit and Sync reuse T3's existing `git.runStackedAction` (its `filePaths` commits only the staged files) and `vcs.pull`.
 - Contracts: `packages/contracts/src/gitDashboard.ts`.
 
 ## Official files the fork changes
@@ -85,6 +86,7 @@ These are the only places an update can conflict:
 
 ## Ideas not done yet
 
-- Choose which files to commit. Needs a server change, because the commit action currently stages everything.
+- Staging part of a file (hunks). A partly staged file is committed whole.
+- Discard changes (VS Code's ↶ button). Left out on purpose because it destroys work.
 - A lighter AI commit-message input: a smaller diff cutoff, and skipping lockfiles and generated files.
 - Mobile versions of Translate and Git.
