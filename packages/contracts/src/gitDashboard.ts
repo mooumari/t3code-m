@@ -70,12 +70,6 @@ export const GitDashboardRemoteBranch = Schema.Struct({
 });
 export type GitDashboardRemoteBranch = typeof GitDashboardRemoteBranch.Type;
 
-export const GitDashboardStash = Schema.Struct({
-  ref: Schema.String,
-  subject: Schema.String,
-});
-export type GitDashboardStash = typeof GitDashboardStash.Type;
-
 export const GitDashboardOverviewResult = Schema.Struct({
   isRepo: Schema.Boolean,
   repoRoot: Schema.NullOr(Schema.String),
@@ -91,7 +85,6 @@ export const GitDashboardOverviewResult = Schema.Struct({
   remoteBranches: Schema.Array(GitDashboardRemoteBranch),
   /** The branch work usually merges into, such as `origin/main`; the review base by default. */
   defaultBranch: Schema.NullOr(Schema.String),
-  stashes: Schema.Array(GitDashboardStash),
 });
 export type GitDashboardOverviewResult = typeof GitDashboardOverviewResult.Type;
 

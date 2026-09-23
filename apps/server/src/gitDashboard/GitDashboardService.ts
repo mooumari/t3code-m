@@ -24,7 +24,6 @@ import {
   COMMIT_DETAILS_FORMAT,
   COMMIT_FORMAT,
   REMOTE_BRANCH_FORMAT,
-  STASH_FORMAT,
   isSafeRefName,
   isSafeRepositoryRelativePath,
   parseBranchList,
@@ -33,7 +32,6 @@ import {
   parseNameStatus,
   parsePorcelainV2Status,
   parseRemoteBranchList,
-  parseStashList,
   parseWorktreeList,
 } from "./gitDashboardParsing.ts";
 
@@ -84,7 +82,6 @@ const EMPTY_OVERVIEW: GitDashboardOverviewResult = {
   branches: [],
   remoteBranches: [],
   defaultBranch: null,
-  stashes: [],
 };
 
 /** Branches work usually merges into, in the order to guess them when the remote names none. */
@@ -120,7 +117,7 @@ export const make = Effect.gen(function* () {
       return EMPTY_OVERVIEW;
     }
 
-    const [status, worktrees, branches, remoteBranches, stashes, originHead] = yield* Effect.all(
+    const [status, worktrees, branches, remoteBranches, originHead] = yield* Effect.all(
       [
         run("status", repoRoot, [
           "status",
@@ -138,7 +135,6 @@ export const make = Effect.gen(function* () {
           "--sort=-committerdate",
           "refs/remotes",
         ]),
-        run("stashes", repoRoot, ["stash", "list", `--format=${STASH_FORMAT}`]),
         run("originHead", repoRoot, ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"]),
       ],
       { concurrency: "unbounded" },
@@ -185,7 +181,6 @@ export const make = Effect.gen(function* () {
       branches: parsedBranches,
       remoteBranches: parsedRemoteBranches,
       defaultBranch,
-      stashes: stashes.exitCode === 0 ? parseStashList(stashes.stdout) : [],
     };
   });
 

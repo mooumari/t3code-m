@@ -76,7 +76,10 @@ export function ThreadLink(props: { readonly thread: WorktreeThread }) {
   );
 }
 
-/** Each checkout of the repository with the threads working in it. */
+/**
+ * Each checkout of the repository with the threads that are active in it. Idle threads are
+ * only counted; the sidebar already lists them.
+ */
 export function WorktreeList(props: {
   readonly worktrees: ReadonlyArray<GitDashboardWorktree>;
   readonly threadsByWorktree: ReadonlyMap<string, ReadonlyArray<WorktreeThread>>;
@@ -88,6 +91,8 @@ export function WorktreeList(props: {
     <ul className="flex flex-col pb-2">
       {props.worktrees.map((worktree) => {
         const threads = props.threadsByWorktree.get(worktree.path) ?? EMPTY_THREADS;
+        const active = threads.filter((thread) => thread.status !== "ready");
+        const idleCount = threads.length - active.length;
         const branch = worktree.detached ? null : worktree.branch;
         return (
           <li key={worktree.path} className="flex flex-col">
@@ -107,6 +112,7 @@ export function WorktreeList(props: {
               <span className="min-w-0 flex-1 truncate text-muted-foreground text-xs">
                 {worktree.isMain ? "main checkout" : worktree.path.split("/").at(-1)}
                 {worktree.isCurrent ? " · shown" : ""}
+                {idleCount > 0 ? ` · ${idleCount} idle` : ""}
               </span>
               {branch && branch !== props.defaultBranch ? (
                 <Button
@@ -121,7 +127,7 @@ export function WorktreeList(props: {
                 </Button>
               ) : null}
             </div>
-            {threads.map((thread) => (
+            {active.map((thread) => (
               <ThreadLink key={thread.ref.threadId} thread={thread} />
             ))}
           </li>

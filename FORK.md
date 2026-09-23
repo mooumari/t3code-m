@@ -48,7 +48,7 @@ Code: `apps/web/src/components/chat/MessageTranslation.tsx`, `messageTranslation
 - a commit graph with lanes, branch labels and push/pull arrows,
 - commit details and diffs,
 - a branch and worktree picker,
-- a list of worktrees with the T3 threads working in each,
+- a Worktrees section (only when the repo has more than one) with the active T3 threads in each; idle ones are just counted,
 - branch review (a branch compared with `main`: its commits, files and diffs),
 - a commit box (an empty message is written by AI) and Sync.
 

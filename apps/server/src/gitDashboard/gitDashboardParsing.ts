@@ -6,7 +6,6 @@ import type {
   GitDashboardFileChange,
   GitDashboardHead,
   GitDashboardRemoteBranch,
-  GitDashboardStash,
   GitDashboardWorktree,
 } from "@t3tools/contracts";
 
@@ -377,20 +376,6 @@ export function parseNameStatus(
     files.push({ path, previousPath: hasTwoPaths ? (first ?? null) : null, change });
   }
   return { files, truncated: false };
-}
-
-export const STASH_FORMAT = ["%gd", "%s"].join("%x1f").concat("%x1e");
-
-/** Parses `git stash list --format=<STASH_FORMAT>`. */
-export function parseStashList(stdout: string): GitDashboardStash[] {
-  const stashes: GitDashboardStash[] = [];
-  for (const record of stdout.split(RECORD_SEPARATOR)) {
-    const trimmed = record.replace(/^\n/, "");
-    if (trimmed.length === 0) continue;
-    const [ref, subject] = trimmed.split(FIELD_SEPARATOR);
-    if (ref) stashes.push({ ref, subject: subject ?? "" });
-  }
-  return stashes;
 }
 
 /**

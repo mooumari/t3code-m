@@ -156,7 +156,6 @@ function RepositoryView(props: {
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
   const [open, setOpen] = useState({
     changes: true,
-    stashes: false,
     worktrees: true,
     graph: true,
   });
@@ -176,10 +175,6 @@ function RepositoryView(props: {
   const workingThreadCount = (worktreeThreads.byWorktree.get(currentWorktreePath) ?? []).filter(
     (thread) => thread.status === "working",
   ).length;
-  const threadCount = [...worktreeThreads.byWorktree.values()].reduce(
-    (total, threads) => total + threads.length,
-    0,
-  );
 
   // A working-tree selection is dropped once its file leaves that group (committed, reverted…).
   const visibleSelection =
@@ -406,35 +401,8 @@ function RepositoryView(props: {
       node: changesSection,
     },
   ];
-  if (!compact && overview.stashes.length > 0) {
-    panes.push({
-      id: "stashes",
-      label: "stashes",
-      open: open.stashes,
-      defaultWeight: 1,
-      node: (
-        <PaneSection
-          fill
-          title="Stashes"
-          count={overview.stashes.length}
-          open={open.stashes}
-          onOpenChange={(stashes) => setOpen((previous) => ({ ...previous, stashes }))}
-        >
-          <ul className="flex flex-col pb-2">
-            {overview.stashes.map((stash) => (
-              <li key={stash.ref} className="flex h-6.5 items-center gap-2 px-6 text-sm">
-                <span className="shrink-0 font-mono text-muted-foreground text-xs">
-                  {stash.ref}
-                </span>
-                <span className="min-w-0 truncate">{stash.subject}</span>
-              </li>
-            ))}
-          </ul>
-        </PaneSection>
-      ),
-    });
-  }
-  if (!compact && (overview.worktrees.length > 1 || threadCount > 0)) {
+  // Only worth the space once agents work in separate checkouts.
+  if (!compact && overview.worktrees.length > 1) {
     panes.push({
       id: "worktrees",
       label: "worktrees",
@@ -443,8 +411,8 @@ function RepositoryView(props: {
       node: (
         <PaneSection
           fill
-          title="Worktrees & threads"
-          count={threadCount}
+          title="Worktrees"
+          count={overview.worktrees.length}
           open={open.worktrees}
           onOpenChange={(worktrees) => setOpen((previous) => ({ ...previous, worktrees }))}
         >
