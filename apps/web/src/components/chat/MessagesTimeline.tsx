@@ -2453,6 +2453,14 @@ function AssistantMessageMeta({
           streaming={copyStreaming}
         />
         <MessageTranslateButton message={message} threadRef={ctx.threadRef} />
+        {/* fork: turn summary */}
+        {ctx.threadRef && message.turnId && !message.streaming ? (
+          <TurnSummaryButton
+            threadRef={ctx.threadRef}
+            turnId={message.turnId}
+            cwd={ctx.markdownCwd}
+          />
+        ) : null}
         {!message.streaming && (
           <Tooltip>
             <TooltipTrigger render={<p className="text-muted-foreground text-xs tabular-nums" />}>

@@ -33,7 +33,7 @@ const decodeCheckpointFiles = Schema.decodeUnknownOption(
 const TURN_STATES = new Set(["running", "interrupted", "completed", "error"]);
 
 /**
- * Builds the handler that summarizes a thread's latest run with the text generation model from
+ * Builds the handler that summarizes one run of a thread (the latest by default) with the text generation model from
  * Settings. It only reads what the run recorded, reading small payload fields in SQL rather
  * than whole tool outputs, and runs outside the thread, so the agent never sees it.
  */
@@ -42,7 +42,8 @@ export const makeSummarizeTurn = Effect.gen(function* () {
   const textGeneration = yield* TextGeneration;
   const settingsService = yield* ServerSettingsService;
 
-  const read = Effect.fn("summarizeTurn.read")(function* (threadId: string) {
+  const read = Effect.fn("summarizeTurn.read")(function* (input: TurnSummaryInput) {
+    const threadId = input.threadId;
     const [thread] = yield* sql<{
       readonly latestTurnId: string | null;
       readonly projectId: ProjectId;
@@ -59,8 +60,9 @@ export const makeSummarizeTurn = Effect.gen(function* () {
       LEFT JOIN projection_projects p ON p.project_id = t.project_id
       WHERE t.thread_id = ${threadId}
     `;
-    if (!thread?.latestTurnId) return null;
-    const turnId = thread.latestTurnId;
+    const turnId = input.turnId ?? thread?.latestTurnId;
+    if (!thread || !turnId) return null;
+    const isLatest = turnId === thread.latestTurnId;
 
     const [turn] = yield* sql<{
       readonly state: string;
@@ -106,11 +108,11 @@ export const makeSummarizeTurn = Effect.gen(function* () {
       ORDER BY sequence, created_at
     `;
 
-    return { thread, turn, request: request?.text ?? "", agentMessages, stepRows };
+    return { thread, turn, isLatest, request: request?.text ?? "", agentMessages, stepRows };
   });
 
   return Effect.fn("summarizeTurn")(function* (input: TurnSummaryInput) {
-    const run = yield* read(input.threadId).pipe(
+    const run = yield* read(input).pipe(
       Effect.mapError((cause) => failure("Could not read the run.", cause)),
     );
     if (run === null) return yield* failure("This thread has no run to summarize yet.");
@@ -131,8 +133,14 @@ export const makeSummarizeTurn = Effect.gen(function* () {
       startedAt: turn.startedAt ?? turn.requestedAt,
       completedAt: turnState === "running" ? null : turn.completedAt,
       now,
-      waitingFor:
-        thread.pendingApprovals > 0 ? "approval" : thread.pendingUserInputs > 0 ? "input" : null,
+      // Pending requests belong to the thread's current run, not to an older one.
+      waitingFor: !run.isLatest
+        ? null
+        : thread.pendingApprovals > 0
+          ? "approval"
+          : thread.pendingUserInputs > 0
+            ? "input"
+            : null,
       agentMessages: run.agentMessages.map((message) => message.text),
       steps: mergeStepRows(run.stepRows),
       changedFiles,

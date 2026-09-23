@@ -41,10 +41,10 @@ git push origin my-t3
 
 Code: `apps/web/src/components/chat/MessageTranslation.tsx`, `messageTranslations.ts`, and `apps/server/src/translation/`.
 
-**Catch me up** (button on the "Working for…" row). A small model reads the current run and says what the agent was asked, what it has done, what it is on now, and anything that needs you. It never touches the agent.
+**Catch me up** (button on the "Working for…" row, and a recap icon next to Translate on each run's final reply). A small model reads the run and says what the agent was asked, what it has done, what it is on now (or how it ended), and anything that needs you. It never touches the agent.
 
 - The server builds a compact log of the run in SQL: your request, the agent's messages, and one line per tool call (Claude's own descriptions, commands, edited paths). Tool output is never sent. Long runs keep their start and latest work, so a 2-hour run is about 4k tokens.
-- Uses Settings → Text generation, like Translate. Results are kept in memory per thread; reopening shows the last one, and it refreshes on demand.
+- Uses Settings → Text generation, like Translate. Results are kept in memory per run; reopening shows the last one, and it refreshes on demand. A recap written mid-run is redone once the run has finished.
 
 Code: `apps/server/src/turnSummary/` (`turnDigest.ts` is the pure part, with tests), `apps/web/src/components/chat/TurnSummary.tsx`.
 
@@ -100,4 +100,3 @@ These are the only places an update can conflict:
 - Discard changes (VS Code's ↶ button). Left out on purpose because it destroys work.
 - A lighter AI commit-message input: a smaller diff cutoff, and skipping lockfiles and generated files.
 - Mobile versions of Translate, Git and Catch me up.
-- Catch me up after a run has finished (the button lives on the working row, which goes away then).

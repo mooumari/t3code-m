@@ -1,4 +1,4 @@
-import { ThreadId } from "@t3tools/contracts";
+import { ThreadId, TurnId } from "@t3tools/contracts";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -29,7 +29,7 @@ const layer = it.layer(
 );
 
 layer("summarizeTurn", (it) => {
-  it.effect("summarizes the latest run from its request, messages and steps, not tool output", () =>
+  it.effect("summarizes a run from its request, messages and steps, not tool output", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       const threadId = ThreadId.make("thread-summary");
@@ -92,6 +92,13 @@ layer("summarizeTurn", (it) => {
       assert.include(prompt, "Edited src/server.ts");
       assert.notInclude(prompt, "An older");
       assert.notInclude(prompt, "SECRET");
+
+      const older = yield* summarizeTurn({ threadId, turnId: TurnId.make("turn-1") });
+      assert.strictEqual(older.turnState, "completed");
+      const olderPrompt = prompts.at(-1) ?? "";
+      assert.include(olderPrompt, "An older request");
+      assert.include(olderPrompt, "An older reply");
+      assert.notInclude(olderPrompt, "Fix the flaky server test");
     }),
   );
 
